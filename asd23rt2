@@ -357,7 +357,7 @@ task.spawn(function()
     end
 end)
 
-local Library = loadstring(game:HttpGet("https://pastebin.com/raw/Q0vcHJge"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/frierenXyz/23ghdsnubig/refs/heads/main/ui.lua"))()
 
 local main = Library.new()
 
@@ -547,7 +547,7 @@ local System = {
         __connections = {},
         __reverted_remotes = {},
         __spam_accumulator = 0,
-        __spam_rate = 2999999999999999940,
+        __spam_rate = 89999999999999999950,
         __infinity_active = false,
         __deathslash_active = false,
         __timehole_active = false,
@@ -1058,17 +1058,38 @@ function System.detection.is_curved()
     local distance = (pos - ball.Position).Magnitude
     local reach_time = distance / speed - ping
 
-    local dot_threshold = 0.55 - (ping * 0.75)
-    dot_threshold = math.clamp(dot_threshold, -1, 0.45)
+    -- Enhanced ping compensation for high ping scenarios
+    local ping_compensation = math.min(ping * 1.2, 0.5) -- Cap at 500ms compensation
+    local adjusted_reach_time = reach_time - ping_compensation
+    
+    -- Improved dot threshold calculation for high velocity balls
+    local base_dot_threshold = 0.55
+    local velocity_factor = math.min(speed / 500, 1.5) -- Scale up to 1.5x for high speeds
+    local ping_factor = math.min(ping * 0.5, 0.3) -- More aggressive ping scaling
+    
+    local dot_threshold = base_dot_threshold - (velocity_factor * 0.15) - ping_factor
+    dot_threshold = math.clamp(dot_threshold, -0.8, 0.45) -- Allow more negative for high speed
 
-    local speed_threshold = math.min(speed / 100, 45)
-    local ball_distance_threshold = 15 - math.min(distance / 1000, 15) + speed_threshold
+    -- Enhanced speed threshold for high velocity balls
+    local speed_multiplier = math.max(1, speed / 100) -- Scale with speed
+    local speed_threshold = math.min(speed / 80 * speed_multiplier, 60) -- Increased from 45 to 60
+    
+    -- Improved distance threshold calculation
+    local base_distance = 15
+    local distance_reduction = math.min(distance / 800, 12) -- More aggressive scaling
+    local velocity_bonus = math.min(speed / 50, 8) -- Bonus for high velocity
+    local ball_distance_threshold = base_distance - distance_reduction + speed_threshold + velocity_bonus
 
     local clamped_dot = math.clamp(dot, -1, 1)
     local radians = math.asin(clamped_dot)
-    props.__lerp_radians = linear_predict(props.__lerp_radians, radians, 0.85)
+    
+    -- Enhanced lerp for high velocity scenarios
+    local lerp_factor = speed > 200 and 0.92 or 0.85 -- Faster lerp for high speeds
+    props.__lerp_radians = linear_predict(props.__lerp_radians, radians, lerp_factor)
 
-    if props.__lerp_radians < 0.016 then
+    -- Adjusted warping detection for high velocity balls
+    local warping_threshold = speed > 150 and 0.012 or 0.016 -- Lower threshold for high speeds
+    if props.__lerp_radians < warping_threshold then
         props.__last_warping = tick()
     end
 
@@ -1076,12 +1097,16 @@ function System.detection.is_curved()
         return false
     end
 
-    local sudden_curve = (tick() - props.__last_warping) < (reach_time / 1.4)
+    -- Enhanced sudden curve detection with velocity compensation
+    local sudden_curve_multiplier = speed > 180 and 1.8 or 1.4 -- More aggressive for high speeds
+    local sudden_curve = (tick() - props.__last_warping) < (adjusted_reach_time / sudden_curve_multiplier)
     if sudden_curve then
         return true
     end
 
-    local sustained_curve = (tick() - props.__curving) < (reach_time / 1.1)
+    -- Enhanced sustained curve detection
+    local sustained_curve_multiplier = speed > 160 and 1.3 or 1.1 -- Better for high speeds
+    local sustained_curve = (tick() - props.__curving) < (adjusted_reach_time / sustained_curve_multiplier)
     if sustained_curve then
         return true
     end
@@ -1176,13 +1201,17 @@ ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(a, b)
 
     local Pings = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
 
-    local Speed_Threshold = math.min(Speed / 100, 40)
+    local Speed_Threshold = math.min(Speed / 80, 60) -- Increased from 40 to 60 for better high-speed handling
     local Reach_Time = Distance / Speed - (Pings / 1000)
+    
+    -- Enhanced ping compensation for high ping scenarios
+    local ping_compensation = Pings > 100 and math.min((Pings - 100) / 100, 0.3) or 0
+    local adjusted_reach_time = Reach_Time - ping_compensation
 
     local Enough_Speed = Speed > 1
-    local Ball_Distance_Threshold = 15 - math.min(Distance / 1000, 15) + Speed_Threshold
+    local Ball_Distance_Threshold = 15 - math.min(Distance / 800, 12) + Speed_Threshold -- More aggressive scaling
 
-    if Enough_Speed and Reach_Time > Pings / 10 then
+    if Enough_Speed and adjusted_reach_time > Pings / 10 then
         Ball_Distance_Threshold = math.max(Ball_Distance_Threshold - 5, 15)
     end
 
@@ -1247,7 +1276,13 @@ function System.autoparry.start()
             local distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
             
             local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
-            local ping_threshold = math.clamp(ping / 10, 5, 17)
+            local ping_ms = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
+            
+            -- Enhanced ping compensation for high ping scenarios
+            local base_ping_threshold = math.clamp(ping / 10, 5, 17)
+            local high_ping_compensation = ping_ms > 150 and math.min((ping_ms - 150) / 50, 8) or 0
+            local ping_threshold = base_ping_threshold + high_ping_compensation
+            
             local speed = velocity.Magnitude
             
             if speed <= 0 then
@@ -1263,9 +1298,15 @@ function System.autoparry.start()
                 end
             end
             
+            -- Enhanced speed divisor calculation with ping compensation
             local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
-            local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+            local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
+            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
+            
+            -- Improved parry accuracy calculation for high ping
+            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
+            local parry_accuracy = base_parry_accuracy + high_ping_buffer
             
             local curved = System.detection.is_curved()
             
@@ -1437,11 +1478,23 @@ function System.autoparry.start()
                     local speed = velocity.Magnitude
                     
                     local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
-                    local ping_threshold = math.clamp(ping / 10, 5, 17)
+                    local ping_ms = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
+                    
+                    -- Enhanced ping compensation for training scenarios
+                    local base_ping_threshold = math.clamp(ping / 10, 5, 17)
+                    local high_ping_compensation = ping_ms > 150 and math.min((ping_ms - 150) / 50, 8) or 0
+                    local ping_threshold = base_ping_threshold + high_ping_compensation
+                    
+                    local speed = velocity.Magnitude
                     
                     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
-                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
+                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
+                    
+                    -- Improved parry accuracy calculation for high ping in training
+                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
+                    local parry_accuracy = base_parry_accuracy + high_ping_buffer
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
