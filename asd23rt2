@@ -356,7 +356,7 @@ task.spawn(function()
     end
 end)
 
-local Library = loadstring(game:HttpGet("https://dustebin.com/api/pastes/DZ4HCOgk.js/raw"))()
+local Library = loadstring(game:HttpGet("https://pastebin.com/raw/Q0vcHJge"))()
 
 local main = Library.new()
 
