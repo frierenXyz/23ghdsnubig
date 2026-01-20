@@ -356,7 +356,7 @@ task.spawn(function()
     end
 end)
 
-local Library = loadstring(game:HttpGet("https://dustebin.com/api/pastes/8slAgXiM.py/raw"))()
+local Library = loadstring(game:HttpGet("https://dustebin.com/api/pastes/9xg1Clie.js/raw"))()
 
 local main = Library.new()
 
@@ -851,11 +851,23 @@ end
 
 System.parry = {}
 
--- MODIFICADO: Agora executa ambos os bypass
+-- MODIFICADO: Agora executa ambos os bypass com gerenciamento de estado aprimorado
 function System.parry.execute()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then
         return
     end
+    
+    -- State management checks
+    if ParryStateManager.is_parry_cooldown or ParryStateManager.state_locks.parry_lock then
+        return
+    end
+    
+    -- Lock parry state to prevent conflicts
+    if not ParryStateManager:lock_state("parry_lock", 0.05) then
+        return
+    end
+    
+    ParryStateManager.last_parry_time = tick()
     
     -- PRIMEIRO: Executar bypass do Burat (original)
     local camera = workspace.CurrentCamera
@@ -933,10 +945,14 @@ function System.parry.execute()
     if System.__properties.__parries > 10000 then return end
     
     System.__properties.__parries = System.__properties.__parries + 1
-    task.delay(0.5, function()
-        if System.__properties.__parries > 0 then
-            System.__properties.__parries = System.__properties.__parries - 1
-        end
+    
+    -- Schedule parry reset with improved timing
+    ParryStateManager:schedule_reset("parry", 0.5)
+    
+    -- Set cooldown to prevent spam
+    ParryStateManager.is_parry_cooldown = true
+    task.delay(0.1, function()
+        ParryStateManager.is_parry_cooldown = false
     end)
 end
 
@@ -1029,7 +1045,12 @@ System.detection = {
         __aerodynamic_time = tick(),
         __last_warping = tick(),
         __lerp_radians = 0,
-        __curving = tick()
+        __curving = tick(),
+        __velocity_history = {},
+        __last_velocity = Vector3.zero,
+        __acceleration = Vector3.zero,
+        __curve_confidence = 0,
+        __high_velocity_detected = false
     }
 }
 
@@ -1057,38 +1078,83 @@ function System.detection.is_curved()
     local distance = (pos - ball.Position).Magnitude
     local reach_time = distance / speed - ping
 
-    -- Enhanced high velocity detection
-    local is_high_velocity = speed > 500
-    local velocity_multiplier = is_high_velocity and 1.5 or 1.0
+    -- Enhanced velocity tracking for high velocity balls
+    local now = tick()
+    table.insert(props.__velocity_history, {velocity = velocity, time = now})
     
-    -- Adaptive dot threshold based on velocity
-    local base_dot_threshold = 0.55 - (ping * 0.75)
-    local velocity_adjustment = is_high_velocity and 0.15 or 0
-    local dot_threshold = math.clamp(base_dot_threshold - velocity_adjustment, -1, 0.45)
+    -- Keep only recent history (last 0.5 seconds)
+    while #props.__velocity_history > 0 and (now - props.__velocity_history[1].time) > 0.5 do
+        table.remove(props.__velocity_history, 1)
+    end
 
-    local speed_threshold = math.min(speed / 100, 45) * velocity_multiplier
+    -- Calculate acceleration and curve confidence
+    if #props.__velocity_history >= 2 then
+        local recent = props.__velocity_history[#props.__velocity_history]
+        local previous = props.__velocity_history[#props.__velocity_history - 1]
+        local time_diff = recent.time - previous.time
+        
+        if time_diff > 0 then
+            props.__acceleration = (recent.velocity - previous.velocity) / time_diff
+            local accel_magnitude = props.__acceleration.Magnitude
+            
+            -- High velocity detection
+            props.__high_velocity_detected = speed > 300
+            
+            -- Curve confidence based on acceleration and speed changes
+            local velocity_change = (recent.velocity - props.__last_velocity).Magnitude
+            local expected_change = speed * time_diff
+            local unexpected_change = math.max(0, velocity_change - expected_change)
+            
+            props.__curve_confidence = math.min(1, (accel_magnitude / 50) + (unexpected_change / 100))
+        end
+    end
+    
+    props.__last_velocity = velocity
+
+    -- Adaptive thresholds based on velocity and confidence
+    local base_dot_threshold = 0.55 - (ping * 0.75)
+    
+    -- More lenient for high velocity balls
+    if props.__high_velocity_detected then
+        base_dot_threshold = base_dot_threshold - 0.15
+    end
+    
+    -- Adjust based on curve confidence
+    base_dot_threshold = base_dot_threshold - (props.__curve_confidence * 0.2)
+    
+    local dot_threshold = math.clamp(base_dot_threshold, -1, 0.45)
+
+    local speed_threshold = math.min(speed / 100, 45)
     local ball_distance_threshold = 15 - math.min(distance / 1000, 15) + speed_threshold
 
     local clamped_dot = math.clamp(dot, -1, 1)
     local radians = math.asin(clamped_dot)
-    props.__lerp_radians = linear_predict(props.__lerp_radians, radians, 0.92) -- Increased responsiveness
+    props.__lerp_radians = linear_predict(props.__lerp_radians, radians, 0.85)
 
-    if props.__lerp_radians < 0.012 then -- More sensitive detection
+    if props.__lerp_radians < 0.016 then
         props.__last_warping = tick()
     end
 
-    if distance < (ball_distance_threshold * 0.9) then -- Slightly increased range
+    if distance < (ball_distance_threshold * 0.85) then
         return false
     end
 
-    local sudden_curve = (tick() - props.__last_warping) < (reach_time / 1.6) -- Faster detection
+    -- Enhanced curve detection for high velocity balls
+    local sudden_curve_threshold = props.__high_velocity_detected and (reach_time / 1.8) or (reach_time / 1.4)
+    local sudden_curve = (tick() - props.__last_warping) < sudden_curve_threshold
     if sudden_curve then
         return true
     end
 
-    local sustained_curve = (tick() - props.__curving) < (reach_time / 1.0) -- More aggressive
+    local sustained_curve_threshold = props.__high_velocity_detected and (reach_time / 1.4) or (reach_time / 1.1)
+    local sustained_curve = (tick() - props.__curving) < sustained_curve_threshold
     if sustained_curve then
         return true
+    end
+
+    -- Consider curve confidence for final decision
+    if props.__curve_confidence > 0.3 then
+        return dot < (dot_threshold + 0.1)
     end
 
     return dot < dot_threshold
@@ -1116,18 +1182,11 @@ ReplicatedStorage.Packages._Index["sleitnick_net@0.1.0"].net["RE/TimeHoleDeactiv
 end)
 
 ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(_, root)
-    -- Enhanced reset on parry success
     if root.Parent and root.Parent ~= LocalPlayer.Character then
         if not Alive or root.Parent.Parent ~= Alive then
             return
         end
     end
-    
-    -- Reset all parry states for consistency
-    System.__properties.__parried = false
-    System.__properties.__antidot_parried = false
-    TriggerbotParried = false
-    System.__properties.__triggerbot_parried = false
     
     local closest = System.player.get_closest()
     local ball = System.ball.get()
@@ -1153,16 +1212,9 @@ ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(_, root
 end)
 
 ReplicatedStorage.Remotes.ParrySuccess.OnClientEvent:Connect(function()
-    -- Enhanced reset on personal parry success
     if not Alive or LocalPlayer.Character.Parent ~= Alive then
         return
     end
-    
-    -- Reset all parry states for consistency
-    System.__properties.__parried = false
-    System.__properties.__antidot_parried = false
-    TriggerbotParried = false
-    System.__properties.__triggerbot_parried = false
     
     if System.__properties.__grab_animation then
         System.__properties.__grab_animation:Stop()
@@ -1209,6 +1261,80 @@ ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(a, b)
         System.detection.__ball_properties.__curving = tick()
     end
 end)
+
+-- Enhanced state management for consistent parry performance
+local ParryStateManager = {
+    last_parry_time = 0,
+    last_kill_time = 0,
+    last_ball_spawn_time = 0,
+    last_spam_end_time = 0,
+    is_parry_cooldown = false,
+    is_transitioning = false,
+    state_locks = {
+        parry_lock = false,
+        spam_lock = false,
+        kill_lock = false
+    },
+    reset_queue = {},
+    
+    lock_state = function(self, lock_type, duration)
+        if self.state_locks[lock_type] then return false end
+        self.state_locks[lock_type] = true
+        task.delay(duration or 0.1, function()
+            self.state_locks[lock_type] = false
+        end)
+        return true
+    end,
+    
+    reset_all_states = function(self)
+        self.last_parry_time = 0
+        self.last_kill_time = 0
+        self.last_ball_spawn_time = 0
+        self.last_spam_end_time = 0
+        self.is_parry_cooldown = false
+        self.is_transitioning = false
+        
+        for lock_type in pairs(self.state_locks) do
+            self.state_locks[lock_type] = false
+        end
+        
+        -- Clear reset queue
+        self.reset_queue = {}
+    end,
+    
+    schedule_reset = function(self, reset_type, delay)
+        table.insert(self.reset_queue, {
+            type = reset_type,
+            time = tick() + (delay or 0)
+        })
+    end,
+    
+    process_resets = function(self)
+        local now = tick()
+        for i = #self.reset_queue, 1, -1 do
+            local reset = self.reset_queue[i]
+            if now >= reset.time then
+                if reset.type == "parry" then
+                    System.__properties.__parried = false
+                    System.__properties.__antidot_parried = false
+                elseif reset.type == "spawn" then
+                    System.__properties.__parries = 0
+                    System.__properties.__parried = false
+                    System.__properties.__antidot_parried = false
+                    -- Reset curve detection properties
+                    local props = System.detection.__ball_properties
+                    props.__velocity_history = {}
+                    props.__curve_confidence = 0
+                    props.__high_velocity_detected = false
+                elseif reset.type == "kill" then
+                    self.last_kill_time = now
+                    System.__properties.__parried = false
+                end
+                table.remove(self.reset_queue, i)
+            end
+        end
+    end
+}
 
 local Connections_Manager = {}
 local TriggerbotParried = false
@@ -1257,8 +1383,6 @@ function System.autoparry.start()
                 System.__properties.__parried = false
                 TriggerbotParried = false
                 System.__properties.__antidot_parried = false
-                System.__properties.__spam_target = nil
-                System.__properties.__spam_target_time = 0
             end)
             
             if System.__properties.__parried then continue end
@@ -1285,8 +1409,46 @@ function System.autoparry.start()
             end
             
             local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-            local speed_divisor = (2.3 + capped_speed_diff * 0.0018) * System.__properties.__divisor_multiplier -- More aggressive
-            local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 8.5) -- Faster response
+            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+            
+            -- Enhanced ping-adaptive timing calculations
+            local adaptive_ping_threshold = ping_threshold
+            local ping_compensation = 0
+            
+            -- Adjust timing based on ping levels
+            if ping > 100 then
+                -- High ping: more lenient timing
+                adaptive_ping_threshold = ping_threshold * 0.8
+                ping_compensation = (ping - 100) * 0.02
+            elseif ping > 50 then
+                -- Medium ping: moderate adjustment
+                adaptive_ping_threshold = ping_threshold * 0.9
+                ping_compensation = (ping - 50) * 0.01
+            else
+                -- Low ping: standard timing with slight optimization
+                adaptive_ping_threshold = ping_threshold * 0.95
+                ping_compensation = math.max(0, (25 - ping) * 0.005)
+            end
+            
+            -- Enhanced speed-based timing with high velocity compensation
+            local speed_bonus = 0
+            if speed > 500 then
+                -- Very high velocity: significant compensation
+                speed_bonus = (speed - 500) * 0.015
+            elseif speed > 300 then
+                -- High velocity: moderate compensation
+                speed_bonus = (speed - 300) * 0.01
+            elseif speed > 150 then
+                -- Medium-high velocity: small compensation
+                speed_bonus = (speed - 150) * 0.005
+            end
+            
+            -- Calculate final parry accuracy with all compensations
+            local base_parry_accuracy = adaptive_ping_threshold + math.max(speed / speed_divisor, 9.5)
+            local parry_accuracy = base_parry_accuracy - ping_compensation - speed_bonus
+            
+            -- Ensure minimum accuracy threshold to prevent missed parries
+            parry_accuracy = math.max(parry_accuracy, 8)
             
             local curved = System.detection.is_curved()
             
@@ -1439,11 +1601,9 @@ function System.autoparry.start()
             local last_parrys = tick()
             repeat
                 RunService.RenderStepped:Wait()
-            until (tick() - last_parrys) >= 0.8 or not System.__properties.__parried -- Faster reset
+            until (tick() - last_parrys) >= 1 or not System.__properties.__parried
             System.__properties.__parried = false
             System.__properties.__antidot_parried = false
-            System.__properties.__spam_target = nil
-            System.__properties.__spam_target_time = 0
         end
         
         if training_ball then
@@ -1451,8 +1611,6 @@ function System.autoparry.start()
             if zoomies then
                 training_ball:GetAttributeChangedSignal('target'):Once(function()
                     System.__properties.__training_parried = false
-                    System.__properties.__parried = false
-                    System.__properties.__antidot_parried = false
                 end)
                 
                 if not System.__properties.__training_parried then
@@ -1465,8 +1623,8 @@ function System.autoparry.start()
                     local ping_threshold = math.clamp(ping / 10, 5, 17)
                     
                     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-                    local speed_divisor = (2.4 + capped_speed_diff * 0.0018) * System.__properties.__divisor_multiplier -- More aggressive for training
-                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 8.0)
+                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
@@ -1479,9 +1637,8 @@ function System.autoparry.start()
                         local last_parrys = tick()
                         repeat
                             RunService.RenderStepped:Wait()
-                        until (tick() - last_parrys) >= 0.8 or not System.__properties.__training_parried -- Faster reset
+                        until (tick() - last_parrys) >= 1 or not System.__properties.__training_parried
                         System.__properties.__training_parried = false
-                        System.__properties.__parried = false
                     end
                 end
             end
@@ -1552,6 +1709,109 @@ function System.auto_spam.start()
 
     System.__properties.__connections.__auto_spam_connection =
     RunService.RenderStepped:Connect(function(deltaTime)
+        if not System.__properties.__auto_spam_enabled then
+            return
+        end
+
+        -- Executa continuamente a cada frame
+        System.parry.execute()
+    end)
+end
+
+function System.auto_spam.stop()
+    System.__properties.__auto_spam_enabled = false
+    if System.__properties.__connections.__auto_spam_connection then
+        System.__properties.__connections.__auto_spam_connection:Disconnect()
+        System.__properties.__connections.__auto_spam_connection = nil
+    end
+    autoSpamAccumulator = 0
+end
+
+function System.auto_spam:get_entity_properties()
+    System.player.get_closest()
+    
+    if not Closest_Entity then return false end
+    
+    local entity_velocity = Closest_Entity.PrimaryPart.Velocity
+    local entity_direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
+    local entity_distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
+    
+    return {
+        Velocity = entity_velocity,
+        Direction = entity_direction,
+        Distance = entity_distance
+    }
+end
+
+function System.auto_spam:get_ball_properties()
+    local ball = System.ball.get()
+    if not ball then return false end
+    
+    local ball_velocity = ball.AssemblyLinearVelocity or Vector3.zero
+    local ball_origin = ball
+    
+    local ball_direction = (LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position).Unit
+    local ball_distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
+    local ball_dot = ball_direction:Dot(ball_velocity.Unit)
+    
+    return {
+        Velocity = ball_velocity,
+        Direction = ball_direction,
+        Distance = ball_distance,
+        Dot = ball_dot
+    }
+end
+
+function System.auto_spam.spam_service(self)
+    local ball = System.ball.get()
+    local entity = System.player.get_closest()
+    
+    if not ball or not entity or not entity.PrimaryPart then
+        return false
+    end
+    
+    local spam_accuracy = 0
+    
+    local velocity = ball.AssemblyLinearVelocity or Vector3.zero
+    local speed = velocity.Magnitude
+    
+    local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
+    local dot = direction:Dot(velocity.Unit)
+    
+    local target_position = entity.PrimaryPart.Position
+    local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
+    
+    local maximum_spam_distance = self.Ping + math.min(speed / 4, 255)
+    
+    if self.Entity_Properties.Distance > maximum_spam_distance then
+        return spam_accuracy
+    end
+    
+    if self.Ball_Properties.Distance > maximum_spam_distance then
+        return spam_accuracy
+    end
+    
+    if target_distance > maximum_spam_distance then
+        return spam_accuracy
+    end
+    
+    local maximum_speed =  7 - math.min(speed / 5, 5)
+    local maximum_dot = math.clamp(dot, -1, 1) * maximum_speed
+    
+    spam_accuracy = maximum_spam_distance - maximum_dot
+    
+    return spam_accuracy
+end
+
+-- CORREÇÃO: Auto spam só ativa nas condições do Burat
+function System.auto_spam.start()
+    if System.__properties.__connections.__auto_spam_connection then
+        System.__properties.__connections.__auto_spam_connection:Disconnect()
+    end
+    
+    System.__properties.__auto_spam_enabled = true
+    
+    System.__properties.__connections.__auto_spam_connection = RunService.RenderStepped:Connect(function(deltaTime)
         if not System.__properties.__auto_spam_enabled or not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then
             return
         end
@@ -1629,13 +1889,9 @@ function System.auto_spam.start()
                                     local pulsed = LocalPlayer.Character:GetAttribute('Pulsed')
                                     
                                     if not pulsed and target_distance <= spam_accuracy and distance <= spam_accuracy then
-                                        -- Enhanced close-range spam
-                                        local is_close_range = target_distance <= 25 and distance <= 25
-                                        local spam_multiplier = is_close_range and 0.5 or 1.0
-                                        
                                         if ball_target == LocalPlayer.Name then
-                                            if target_distance <= (35 * spam_multiplier) and distance <= (35 * spam_multiplier) then
-                                                if System.__properties.__parries > (System.__properties.__spam_threshold * spam_multiplier) then
+                                            if target_distance <= 30 and distance <= 30 then
+                                                if System.__properties.__parries > System.__properties.__spam_threshold then
                                                     if getgenv().AutoSpamMode == "Keypress" then
                                                         System.parry.keypress()
                                                     else
@@ -1647,7 +1903,7 @@ function System.auto_spam.start()
                                                 end
                                             end
                                         else
-                                            if System.__properties.__parries > (System.__properties.__spam_threshold * spam_multiplier) then
+                                            if System.__properties.__parries > System.__properties.__spam_threshold then
                                                 if getgenv().AutoSpamMode == "Keypress" then
                                                     System.parry.keypress()
                                                 else
@@ -1679,6 +1935,807 @@ function System.auto_spam.stop()
     System.__properties.__spam_target_time = 0
     autoSpamAccumulator = 0
 end
+
+local function create_mobile_button(name, position_y, color)
+    local gui = Instance.new('ScreenGui')
+    gui.Name = 'Sigma' .. name .. 'Mobile'
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    local button = Instance.new('TextButton')
+    button.Size = UDim2.new(0, 140, 0, 50)
+    button.Position = UDim2.new(0.5, -70, position_y, 0)
+    button.BackgroundTransparency = 1
+    button.AnchorPoint = Vector2.new(0.5, 0)
+    button.Draggable = true
+    button.AutoButtonColor = false
+    button.ZIndex = 2
+    
+    local bg = Instance.new('Frame')
+    bg.Size = UDim2.new(1, 0, 1, 0)
+    bg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    bg.Parent = button
+    
+    local corner = Instance.new('UICorner')
+    corner.CornerRadius = UDim.new(0, 10)
+    corner.Parent = bg
+    
+    local stroke = Instance.new('UIStroke')
+    stroke.Color = color
+    stroke.Thickness = 1
+    stroke.Transparency = 0.3
+    stroke.Parent = bg
+    
+    local text = Instance.new('TextLabel')
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = name
+    text.Font = Enum.Font.GothamBold
+    text.TextSize = 16
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.ZIndex = 3
+    text.Parent = button
+    
+    button.Parent = gui
+    gui.Parent = CoreGui
+    
+    return {gui = gui, button = button, text = text, bg = bg}
+end
+
+local function destroy_mobile_gui(gui_data)
+    if gui_data and gui_data.gui then
+        gui_data.gui:Destroy()
+    end
+end
+
+local autoparry_module = rage:create_module({
+    title = 'Auto Parry',
+    flag = 'Auto_Parry',
+    description = 'Automatically parries ball',
+    section = 'left',
+    callback = function(value)
+        System.__properties.__autoparry_enabled = value
+        if value then
+            System.autoparry.start()
+            if getgenv().AutoParryNotify then
+                Library.SendNotification({
+                    title = "Auto Parry",
+                    text = "ON (Triggerbot integrado ativo)",
+                    duration = 3
+                })
+            end
+        else
+            System.autoparry.stop()
+            if getgenv().AutoParryNotify then
+                Library.SendNotification({
+                    title = "Auto Parry",
+                    text = "OFF",
+                    duration = 2
+                })
+            end
+        end
+    end
+})
+
+autoparry_module:create_dropdown({
+    title = "Parry Mode",
+    flag = "autoparry_mode",
+    options = {"Remote", "Keypress"},
+    default = "Remote",
+    multi_dropdown = false,
+    maximum_options = 2,
+    callback = function(value)
+        getgenv().AutoParryMode = value
+    end
+})
+
+local AutoCurveDropdown = autoparry_module:create_dropdown({
+    title = "AutoCurve",
+    flag = "curve_type",
+    options = System.__config.__curve_names,
+    multi_dropdown = false,
+    maximum_options = 6,
+    callback = function(value)
+        for i, name in ipairs(System.__config.__curve_names) do
+            if name == value then
+                System.__properties.__curve_mode = i
+                break
+            end
+        end
+    end
+})
+
+autoparry_module:create_slider({
+    title = 'Parry Accuracy',
+    flag = 'Parry_Accuracy',
+    maximum_value = 100,
+    minimum_value = 1,
+    value = 50,
+    round_number = true,
+    callback = function(value)
+        System.__properties.__accuracy = value
+        update_divisor()
+    end
+})
+
+autoparry_module:create_checkbox({
+    title = "Play Animation",
+    flag = "Play_Animation",
+    callback = function(value)
+        System.__properties.__play_animation = value
+    end
+})
+
+autoparry_module:create_divider({})
+
+autoparry_module:create_checkbox({
+    title = "Notify",
+    flag = "Auto_Parry_Notify",
+    callback = function(value)
+        getgenv().AutoParryNotify = value
+    end
+})
+
+autoparry_module:create_checkbox({
+    title = "Cooldown Protection",
+    flag = "CooldownProtection",
+    callback = function(value)
+        getgenv().CooldownProtection = value
+    end
+})
+
+autoparry_module:create_checkbox({
+    title = "Auto Ability",
+    flag = "AutoAbility",
+    callback = function(value)
+        getgenv().AutoAbility = value
+    end
+})
+
+local function create_curve_selector_mobile()
+    local gui = Instance.new('ScreenGui')
+    gui.Name = 'SigmaCurveSelectorMobile'
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    
+    local main_frame = Instance.new('Frame')
+    main_frame.Size = UDim2.new(0, 140, 0, 40)
+    main_frame.Position = UDim2.new(0.5, -70, 0.12, 0)
+    main_frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    main_frame.BorderSizePixel = 0
+    main_frame.AnchorPoint = Vector2.new(0.5, 0)
+    main_frame.ZIndex = 5
+    main_frame.Parent = gui
+    
+    local main_corner = Instance.new('UICorner')
+    main_corner.CornerRadius = UDim.new(0, 8)
+    main_corner.Parent = main_frame
+    
+    local main_stroke = Instance.new('UIStroke')
+    main_stroke.Color = Color3.fromRGB(60, 60, 60)
+    main_stroke.Thickness = 1
+    main_stroke.Parent = main_frame
+
+    local header = Instance.new('Frame')
+    header.Size = UDim2.new(1, 0, 0, 40)
+    header.BackgroundTransparency = 1
+    header.ZIndex = 6
+    header.Parent = main_frame
+    
+    local header_text = Instance.new('TextLabel')
+    header_text.Size = UDim2.new(1, -35, 1, 0)
+    header_text.Position = UDim2.new(0, 12, 0, 0)
+    header_text.BackgroundTransparency = 1
+    header_text.Text = "CURVE"
+    header_text.Font = Enum.Font.Gotham
+    header_text.TextSize = 11
+    header_text.TextColor3 = Color3.fromRGB(180, 180, 180)
+    header_text.TextXAlignment = Enum.TextXAlignment.Left
+    header_text.ZIndex = 7
+    header_text.Parent = header
+
+    local toggle_btn = Instance.new('TextButton')
+    toggle_btn.Size = UDim2.new(0, 24, 0, 24)
+    toggle_btn.Position = UDim2.new(1, -32, 0.5, -12)
+    toggle_btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    toggle_btn.Text = "−"
+    toggle_btn.Font = Enum.Font.GothamBold
+    toggle_btn.TextSize = 14
+    toggle_btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    toggle_btn.AutoButtonColor = false
+    toggle_btn.ZIndex = 7
+    toggle_btn.Parent = header
+    
+    local toggle_corner = Instance.new('UICorner')
+    toggle_corner.CornerRadius = UDim.new(0, 4)
+    toggle_corner.Parent = toggle_btn
+    
+    local toggle_stroke = Instance.new('UIStroke')
+    toggle_stroke.Color = Color3.fromRGB(50, 50, 50)
+    toggle_stroke.Thickness = 1
+    toggle_stroke.Parent = toggle_btn
+
+    local buttons_container = Instance.new('Frame')
+    buttons_container.Size = UDim2.new(1, -16, 0, 0)
+    buttons_container.Position = UDim2.new(0, 8, 0, 48)
+    buttons_container.BackgroundTransparency = 1
+    buttons_container.ClipsDescendants = true
+    buttons_container.ZIndex = 6
+    buttons_container.Parent = main_frame
+    
+    local list_layout = Instance.new('UIListLayout')
+    list_layout.Padding = UDim.new(0, 4)
+    list_layout.FillDirection = Enum.FillDirection.Vertical
+    list_layout.SortOrder = Enum.SortOrder.LayoutOrder
+    list_layout.Parent = buttons_container
+    
+    local CURVE_TYPES = {
+        {name = "Camera"},
+        {name = "Random"},
+        {name = "Accelerated"},
+        {name = "Backwards"},
+        {name = "Slow"},
+        {name = "High"}
+    }
+    
+    local buttons = {}
+    local current_selected = nil
+    
+    for i, curve_data in ipairs(CURVE_TYPES) do
+        local btn_container = Instance.new('Frame')
+        btn_container.Size = UDim2.new(1, 0, 0, 32)
+        btn_container.BackgroundTransparency = 1
+        btn_container.ZIndex = 7
+        btn_container.LayoutOrder = i
+        btn_container.Parent = buttons_container
+        
+        local btn = Instance.new('TextButton')
+        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        btn.Text = ""
+        btn.AutoButtonColor = false
+        btn.ZIndex = 8
+        btn.Parent = btn_container
+        
+        local btn_corner = Instance.new('UICorner')
+        btn_corner.CornerRadius = UDim.new(0, 6)
+        btn_corner.Parent = btn
+        
+        local btn_stroke = Instance.new('UIStroke')
+        btn_stroke.Color = Color3.fromRGB(45, 45, 45)
+        btn_stroke.Thickness = 1
+        btn_stroke.Parent = btn
+
+        local indicator = Instance.new('Frame')
+        indicator.Size = UDim2.new(0, 3, 0, 20)
+        indicator.Position = UDim2.new(0, 6, 0.5, -10)
+        indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        indicator.BorderSizePixel = 0
+        indicator.Visible = false
+        indicator.ZIndex = 10
+        indicator.Parent = btn
+        
+        local indicator_corner = Instance.new('UICorner')
+        indicator_corner.CornerRadius = UDim.new(1, 0)
+        indicator_corner.Parent = indicator
+        
+        local btn_text = Instance.new('TextLabel')
+        btn_text.Size = UDim2.new(1, -20, 1, 0)
+        btn_text.Position = UDim2.new(0, 16, 0, 0)
+        btn_text.BackgroundTransparency = 1
+        btn_text.Text = curve_data.name
+        btn_text.Font = Enum.Font.Gotham
+        btn_text.TextSize = 11
+        btn_text.TextColor3 = Color3.fromRGB(150, 150, 150)
+        btn_text.TextXAlignment = Enum.TextXAlignment.Left
+        btn_text.ZIndex = 9
+        btn_text.Parent = btn
+        
+        buttons[i] = {
+            button = btn, 
+            stroke = btn_stroke, 
+            text = btn_text,
+            indicator = indicator,
+            container = btn_container
+        }
+        
+        local touch_start = 0
+        local was_dragged = false
+        
+        btn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                touch_start = tick()
+                was_dragged = false
+            end
+        end)
+        
+        btn.InputChanged:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                if (tick() - touch_start) > 0.1 then
+                    was_dragged = true
+                end
+            end
+        end)
+        
+        btn.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch and not was_dragged then
+
+                for idx, name in ipairs(System.__config.__curve_names) do
+                    if name == curve_data.name then
+                        System.__properties.__curve_mode = idx
+                        AutoCurveDropdown:update(curve_data.name)
+                        break
+                    end
+                end
+
+                if current_selected then
+                    game:GetService("TweenService"):Create(current_selected.button, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                        BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+                    }):Play()
+                    game:GetService("TweenService"):Create(current_selected.text, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                        TextColor3 = Color3.fromRGB(150, 150, 150)
+                    }):Play()
+                    game:GetService("TweenService"):Create(current_selected.stroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                        Color = Color3.fromRGB(45, 45, 45)
+                    }):Play()
+                    current_selected.indicator.Visible = false
+                end
+
+                game:GetService("TweenService"):Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                    BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                }):Play()
+                game:GetService("TweenService"):Create(btn_text, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                    TextColor3 = Color3.fromRGB(255, 255, 255)
+                }):Play()
+                game:GetService("TweenService"):Create(btn_stroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+                    Color = Color3.fromRGB(255, 255, 255)
+                }):Play()
+                indicator.Visible = true
+                
+                current_selected = buttons[i]
+                
+                if getgenv().AutoCurveHotkeyNotify then
+                    Library.SendNotification({
+                        title = "AutoCurve",
+                        text = curve_data.name,
+                        duration = 2
+                    })
+                end
+            end
+        end)
+    end
+
+    local is_expanded = true
+    local expanded_height = 48 + (#CURVE_TYPES * 32) + ((#CURVE_TYPES - 1) * 4) + 12
+    local minimized_height = 40
+    
+    buttons_container.Size = UDim2.new(1, -16, 0, (#CURVE_TYPES * 32) + ((#CURVE_TYPES - 1) * 4))
+    main_frame.Size = UDim2.new(0, 140, 0, expanded_height)
+    
+    toggle_btn.MouseButton1Click:Connect(function()
+        is_expanded = not is_expanded
+        toggle_btn.Text = is_expanded and "−" or "+"
+        
+        game:GetService("TweenService"):Create(main_frame, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Size = UDim2.new(0, 140, 0, is_expanded and expanded_height or minimized_height)
+        }):Play()
+        
+        game:GetService("TweenService"):Create(buttons_container, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Size = UDim2.new(1, -16, 0, is_expanded and (#CURVE_TYPES * 32) + ((#CURVE_TYPES - 1) * 4) or 0)
+        }):Play()
+    end)
+
+    local drag_start = nil
+    local start_pos = nil
+    local is_dragging = false
+    
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            drag_start = input.Position
+            start_pos = main_frame.Position
+            is_dragging = true
+        end
+    end)
+    
+    header.InputChanged:Connect(function(input)
+        if is_dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - drag_start
+            main_frame.Position = UDim2.new(
+                start_pos.X.Scale,
+                start_pos.X.Offset + delta.X,
+                start_pos.Y.Scale,
+                start_pos.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    header.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            is_dragging = false
+        end
+    end)
+    
+    gui.Parent = CoreGui
+    
+    return {gui = gui, main_frame = main_frame, buttons = buttons}
+end
+
+local CURVE_TYPES = {
+    {key = Enum.KeyCode.One, name = "Camera"},
+    {key = Enum.KeyCode.Two, name = "Random"},
+    {key = Enum.KeyCode.Three, name = "Accelerated"},
+    {key = Enum.KeyCode.Four, name = "Backwards"},
+    {key = Enum.KeyCode.Five, name = "Slow"},
+    {key = Enum.KeyCode.Six, name = "High"}
+}
+
+local function updateCurveType(newType)
+    for i, name in ipairs(System.__config.__curve_names) do
+        if name == newType then
+            System.__properties.__curve_mode = i
+            AutoCurveDropdown:update(newType)
+            break
+        end
+    end
+    
+    if getgenv().AutoCurveHotkeyNotify then
+        Library.SendNotification({
+            title = "AutoCurve",
+            text = newType,
+            duration = 2
+        })
+    end
+end
+
+local hotkeyModule = rage:create_module({
+    title = "AutoCurve Hotkey" .. (System.__properties.__is_mobile and "(Mobile)" or "(PC)"),
+    description = "Press 1-6 to change curve",
+    flag = "autocurve_hotkey",
+    section = "left",
+    callback = function(state)
+        getgenv().AutoCurveHotkeyEnabled = state
+        
+        if System.__properties.__is_mobile then
+            if state then
+                if not System.__properties.__mobile_guis.curve_selector then
+                    local curve_selector = create_curve_selector_mobile()
+                    System.__properties.__mobile_guis.curve_selector = curve_selector
+                end
+            else
+                destroy_mobile_gui(System.__properties.__mobile_guis.curve_selector)
+                System.__properties.__mobile_guis.curve_selector = nil
+            end
+        end
+    end
+})
+
+hotkeyModule:create_checkbox({
+    title = "Notify",
+    flag = "AutoCurveHotkeyNotify",
+    callback = function(value)
+        getgenv().AutoCurveHotkeyNotify = value
+    end
+})
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed or not getgenv().AutoCurveHotkeyEnabled or System.__properties.__is_mobile then return end
+    
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        for _, curveData in ipairs(CURVE_TYPES) do
+            if input.KeyCode == curveData.key then
+                updateCurveType(curveData.name)
+                break
+            end
+        end
+    end
+end)
+
+detectionstab:create_module({
+    title = 'Infinity Detection',
+    flag = 'Infinity',
+    description = '',
+    section = 'left',
+    callback = function(value)
+        System.__config.__detections.__infinity = value
+    end
+})
+
+detectionstab:create_module({
+    title = 'Death Slash Detection',
+    flag = 'Death_Slash',
+    description = '',
+    section = 'right',
+    callback = function(value)
+        System.__config.__detections.__deathslash = value
+    end
+})
+
+detectionstab:create_module({
+    title = 'Time Hole Detection',
+    flag = 'Time_Hole',
+    description = '',
+    section = 'left',
+    callback = function(value)
+        System.__config.__detections.__timehole = value
+    end
+})
+
+local AntiPhantom = {
+    Enabled = false,
+    CurrentBall = nil,
+    FocusConnection = nil
+}
+
+function AntiPhantom:HandleTransmission(Object)
+    if not self.Enabled then return end
+    
+    if Object.Name == "maxTransmission" or Object.Name == "transmissionpart" then
+        local Weld = Object:FindFirstChildWhichIsA("WeldConstraint")
+        if Weld then
+            local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            if Character and Weld.Part1 == Character.HumanoidRootPart then
+                self.CurrentBall = System.ball.get()
+                Weld:Destroy()
+                
+                if self.CurrentBall then
+                    self:InstantParry()
+                end
+            end
+        end
+    end
+end
+
+function AntiPhantom:InstantParry()
+    if not self.CurrentBall or not self.Enabled then return end
+    
+    ReplicatedStorage.Remotes.AbilityButtonPress:Fire()
+    System.__properties.__parried = true
+    
+    if System.parry and System.parry.execute_action then
+        System.parry.execute_action()
+    end
+    
+    task.delay(1, function()
+        System.__properties.__parried = false
+    end)
+    
+    self.CurrentBall = nil
+    
+    if self.FocusConnection then
+        self.FocusConnection:Disconnect()
+        self.FocusConnection = nil
+    end
+end
+
+function AntiPhantom:Cleanup()
+    if self.FocusConnection then
+        self.FocusConnection:Disconnect()
+        self.FocusConnection = nil
+    end
+    self.CurrentBall = nil
+end
+
+function AntiPhantom:Toggle(state)
+    self.Enabled = state
+    System.__config.__detections.__phantom = state
+    
+    if state then
+        if getgenv().AntiPhantomNotify then
+            Library.SendNotification({
+                title = "Anti-Phantom",
+                text = "ON - INSTANT",
+                duration = 2
+            })
+        end
+    else
+        self:Cleanup()
+        if getgenv().AntiPhantomNotify then
+            Library.SendNotification({
+                title = "Anti-Phantom",
+                text = "OFF",
+                duration = 2
+            })
+        end
+    end
+end
+
+Runtime.ChildAdded:Connect(function(Object)
+    AntiPhantom:HandleTransmission(Object)
+end)
+
+local phantom_module = detectionstab:create_module({
+    title = 'Anti-Phantom ',
+    flag = 'Anti_Phantom',
+    description = 'Counter Phantom ',
+    section = 'left',
+    callback = function(value)
+        AntiPhantom:Toggle(value)
+    end
+})
+
+local manual_spam_module = set:create_module({
+    title = "Manual Spam",
+    description = "spam manual",
+    flag = "manualspam",
+    section = "left",
+    callback = function(state)
+        if System.__properties.__is_mobile then
+            if state then
+                if not System.__properties.__mobile_guis.manual_spam then
+                    local manual_spam_mobile = create_mobile_button('Spam', 0.8, Color3.fromRGB(255, 255, 255))
+                    System.__properties.__mobile_guis.manual_spam = manual_spam_mobile
+                    
+                    local manual_touch_start = 0
+                    local manual_was_dragged = false
+                    
+                    manual_spam_mobile.button.InputBegan:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.Touch then
+                            manual_touch_start = tick()
+                            manual_was_dragged = false
+                        end
+                    end)
+                    
+                    manual_spam_mobile.button.InputChanged:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.Touch then
+                            if (tick() - manual_touch_start) > 0.1 then
+                                manual_was_dragged = true
+                            end
+                        end
+                    end)
+                    
+                    manual_spam_mobile.button.InputEnded:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.Touch and not manual_was_dragged then
+                            System.__properties.__manual_spam_enabled = not System.__properties.__manual_spam_enabled
+                            
+                            if System.__properties.__manual_spam_enabled then
+                                System.manual_spam.start()
+                                manual_spam_mobile.text.Text = "ON"
+                                manual_spam_mobile.text.TextColor3 = Color3.fromRGB(0, 255, 100)
+                            else
+                                System.manual_spam.stop()
+                                manual_spam_mobile.text.Text = "Spam"
+                                manual_spam_mobile.text.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            end
+                            
+                            if getgenv().ManualSpamNotify then
+                                Library.SendNotification({
+                                    title = "ManualSpam",
+                                    text = System.__properties.__manual_spam_enabled and "ON (100K CPS)" or "OFF",
+                                    duration = 2
+                                })
+                            end
+                        end
+                    end)
+                end
+            else
+                System.__properties.__manual_spam_enabled = false
+                System.manual_spam.stop()
+                destroy_mobile_gui(System.__properties.__mobile_guis.manual_spam)
+                System.__properties.__mobile_guis.manual_spam = nil
+            end
+        else
+            System.__properties.__manual_spam_enabled = state
+            if state then
+                System.manual_spam.start()
+                if getgenv().ManualSpamNotify then
+                    Library.SendNotification({
+                        title = "Manual Spam",
+                        text = "ON (100K CPS)",
+                        duration = 2
+                    })
+                end
+            else
+                System.manual_spam.stop()
+                if getgenv().ManualSpamNotify then
+                    Library.SendNotification({
+                        title = "Manual Spam",
+                        text = "OFF",
+                        duration = 2
+                    })
+                end
+            end
+        end
+    end
+})
+
+manual_spam_module:create_checkbox({
+    title = "Notify",
+    flag = "ManualSpamNotify",
+    callback = function(value)
+        getgenv().ManualSpamNotify = value
+    end
+})
+
+manual_spam_module:create_dropdown({
+    title = "Mode",
+    flag = "manualspam_mode",
+    options = {"Remote", "Keypress"},
+    default = "Remote",
+    multi_dropdown = false,
+    maximum_options = 2,
+    callback = function(value)
+        getgenv().ManualSpamMode = value
+    end
+})
+
+manual_spam_module:create_checkbox({
+    title = "Animation Fix",
+    flag = "ManualSpamAnimationFix",
+    callback = function(value)
+        getgenv().ManualSpamAnimationFix = value
+    end
+})
+
+local auto_spam_module = set:create_module({
+    title = 'Auto Spam',
+    flag = 'Auto_Spam_Parry',
+    description = 'Automatically spam parries ball ',
+    section = 'right',
+    callback = function(value)
+        System.__properties.__auto_spam_enabled = value
+        if value then
+            System.auto_spam.start()
+            if getgenv().AutoSpamNotify then
+                Library.SendNotification({
+                    title = "Auto Spam",
+                    text = "ON (100K CPS)",
+                    duration = 2
+                })
+            end
+        else
+            System.auto_spam.stop()
+            if getgenv().AutoSpamNotify then
+                Library.SendNotification({
+                    title = "Auto Spam",
+                    text = "OFF",
+                    duration = 2
+                })
+            end
+        end
+    end
+})
+
+auto_spam_module:create_checkbox({
+    title = "Notify",
+    flag = "Auto_Spam_Notify",
+    callback = function(value)
+        getgenv().AutoSpamNotify = value
+    end
+})
+
+auto_spam_module:create_dropdown({
+    title = "Mode",
+    flag = "autospam_mode",
+    options = {"Remote", "Keypress"},
+    default = "Remote",
+    multi_dropdown = false,
+    maximum_options = 2,
+    callback = function(value)
+        getgenv().AutoSpamMode = value
+    end
+})
+
+auto_spam_module:create_checkbox({
+    title = "Animation Fix",
+    flag = "AutoSpamAnimationFix",
+    callback = function(value)
+        getgenv().AutoSpamAnimationFix = value
+    end
+})
+
+auto_spam_module:create_slider({
+    title = "Parry Threshold",
+    flag = "Parry_Threshold",
+    maximum_value = 5,
+    minimum_value = 1,
+    value = 2.5,
+    round_number = false,
+    callback = function(value)
+        System.__properties.__spam_threshold = value
+    end
+})
 
 local __players = cloneref(game:GetService('Players'))
 local __localplayer = __players.LocalPlayer
@@ -3567,6 +4624,7 @@ function Plasma.create_trails(ball)
         trailData.trail.MinLength = 0
         trailData.trail.FaceCamera = true
         trailData.trail.LightEmission = 1
+        trailData.trail.LightInfluence = 0
         trailData.trail.Texture = "rbxassetid://5029929719"
         trailData.trail.TextureMode = Enum.TextureMode.Stretch
         trailData.trail.Enabled = true
@@ -4262,318 +5320,90 @@ SkinChanger:create_divider({})
 workspace.ChildRemoved:Connect(function(child)
     if child.Name == 'Balls' then
         System.__properties.__cached_balls = nil
+        ParryStateManager:reset_all_states()
     end
 end)
 
 local balls = workspace:FindFirstChild('Balls')
 if balls then
     balls.ChildAdded:Connect(function(child)
-        -- Enhanced reset system for ball spawn
-        System.__properties.__parried = false
-        System.__properties.__antidot_parried = false
-        System.__properties.__spam_target = nil
-        System.__properties.__spam_target_time = 0
-        System.__properties.__parries = 0
-        TriggerbotParried = false
-        System.__properties.__triggerbot_parried = false
-        System.__properties.__last_kill_time = 0
+        ParryStateManager.last_ball_spawn_time = tick()
+        ParryStateManager:schedule_reset("spawn", 0.1)
         
-        -- Reset detection properties
-        System.detection.__ball_properties.__last_warping = tick()
-        System.detection.__ball_properties.__curving = tick()
-        System.detection.__ball_properties.__lerp_radians = 0
+        ParryStateManager.is_parry_cooldown = false
+        ParryStateManager.is_transitioning = false
+        
+        local props = System.detection.__ball_properties
+        props.__velocity_history = {}
+        props.__curve_confidence = 0
+        props.__high_velocity_detected = false
+        props.__last_warping = tick()
+        props.__curving = tick()
     end)
     
     balls.ChildRemoved:Connect(function()
-        -- Enhanced reset system for ball removal
         System.__properties.__parries = 0
+        ParryStateManager:schedule_reset("spawn", 0)
+        
         System.__properties.__parried = false
         System.__properties.__antidot_parried = false
-        System.__properties.__spam_target = nil
-        System.__properties.__spam_target_time = 0
         TriggerbotParried = false
-        System.__properties.__triggerbot_parried = false
-        System.__properties.__last_kill_time = 0
         
-        -- Reset detection properties
-        System.detection.__ball_properties.__last_warping = tick()
-
-    table.insert(clashConnections, getconnections(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent)[1])
-
-    getgenv().updateSword = function()
-        if getgenv().changeSwordFX then
-            getgenv().slashName = getSlashName(getgenv().swordFX)
-        end
-        setSword()
-    end
-
-    task.spawn(function()
-        while task.wait(1) do
-            if getgenv().skinChangerEnabled and getgenv().changeSwordModel then
-                local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                if LocalPlayer:GetAttribute("CurrentlyEquippedSword") ~= getgenv().swordModel then
-                    setSword()
-                end
-                if char and (not char:FindFirstChild(getgenv().swordModel)) then
-                    setSword()
-                end
-                for _,v in (char and char:GetChildren()) or {} do
-                    if v:IsA("Model") and v.Name ~= getgenv().swordModel then
-                        v:Destroy()
-                    end
-                    task.wait()
-                end
-            end
-        end
+        ParryStateManager.last_spam_end_time = tick()
+        ParryStateManager:lock_state("spam_lock", 0.5)
     end)
+end
 
-    local SkinChanger = misc:create_module({
-        title = 'Skin Changer',
-        flag = 'SkinChanger',
-        description = 'Skin Changer',
-        section = 'left',
-        callback = function(value: boolean)
-            getgenv().skinChangerEnabled = value
-            if value then
-                getgenv().updateSword()
-            end
-        end
-    })
-
-    SkinChanger:create_divider({})
-
-    SkinChanger:change_state(false)
-
-    local changeSwordModelCheckbox = SkinChanger:create_checkbox({
-        title = "Change Sword Model",
-        flag = "ChangeSwordModel",
-        callback = function(value: boolean)
-            getgenv().changeSwordModel = value
-            if getgenv().skinChangerEnabled then
-                getgenv().updateSword()
-            end
-        end
-    })
-
-    changeSwordModelCheckbox:change_state(true)
-
-    local swordModelTextbox = SkinChanger:create_textbox({
-        title = "￬ Sword Model Name ￬",
-        placeholder = "Enter Sword Model Name...",
-        flag = "SwordModelTextbox",
-        callback = function(text)
-            getgenv().swordModel = text
-            if getgenv().skinChangerEnabled and getgenv().changeSwordModel then
-                getgenv().updateSword()
-            end
-        end
-    })
-
-    SkinChanger:create_divider({})
-
-    local changeSwordAnimationCheckbox = SkinChanger:create_checkbox({
-        title = "Change Sword Animation",
-        flag = "ChangeSwordAnimation",
-        callback = function(value: boolean)
-            getgenv().changeSwordAnimation = value
-            if getgenv().skinChangerEnabled then
-                getgenv().updateSword()
-            end
-        end
-    })
-
-    changeSwordAnimationCheckbox:change_state(true)
-
-    local swordAnimationTextbox = SkinChanger:create_textbox({
-        title = "￬ Sword Animation Name ￬",
-        placeholder = "Enter Sword Animation Name...",
-        flag = "SwordAnimationTextbox",
-        callback = function(text)
-            getgenv().swordAnimations = text
-            if getgenv().skinChangerEnabled and getgenv().changeSwordAnimation then
-                getgenv().updateSword()
-            end
-        end
-    })
-
-    SkinChanger:create_divider({})
-
-    local changeSwordFXCheckbox = SkinChanger:create_checkbox({
-        title = "Change Sword FX",
-        flag = "ChangeSwordFX",
-        callback = function(value: boolean)
-            getgenv().changeSwordFX = value
-            if getgenv().skinChangerEnabled then
-                getgenv().updateSword()
-            end
-        end
-    })
-
-    changeSwordFXCheckbox:change_state(true)
-
-    local swordFXTextbox = SkinChanger:create_textbox({
-        title = "￬ Sword FX Name ￬",
-        placeholder = "Enter Sword FX Name...",
-        flag = "SwordFXTextbox",
-        callback = function(text)
-            getgenv().swordFX = text
-            if getgenv().skinChangerEnabled and getgenv().changeSwordFX then
-                getgenv().updateSword()
-            end
-        end
-    })
-
-    SkinChanger:create_divider({})
-
-    local autoparry_module = rage:create_module({
-        title = 'Auto Parry',
-        flag = 'Auto_Parry',
-        description = 'Automatically parries ball',
-        section = 'left',
-        callback = function(value)
-            System.__properties.__autoparry_enabled = value
-            if value then
-                System.autoparry.start()
-                if getgenv().AutoParryNotify then
-                    Library.SendNotification({
-                        title = "Auto Parry",
-                        text = "ON (Triggerbot integrado ativo)",
-                        duration = 3
-                    })
-                end
-            else
-                System.autoparry.stop()
-                if getgenv().AutoParryNotify then
-                    Library.SendNotification({
-                        title = "Auto Parry",
-                        text = "OFF",
-                        duration = 2
-                    })
-                end
-            end
-        end
-    })
-
-    autoparry_module:create_dropdown({
-        title = "Parry Mode",
-        flag = "autoparry_mode",
-        options = {"Remote", "Keypress"},
-        default = "Remote",
-        multi_dropdown = false,
-        maximum_options = 2,
-        callback = function(value)
-            getgenv().AutoParryMode = value
-        end
-    })
-
-    local AutoCurveDropdown = autoparry_module:create_dropdown({
-        title = "AutoCurve",
-        flag = "curve_type",
-        options = System.__config.__curve_names,
-        multi_dropdown = false,
-        maximum_options = 6,
-        callback = function(value)
-            for i, name in ipairs(System.__config.__curve_names) do
-                if name == value then
-                    System.__properties.__curve_mode = i
-                    break
-                end
-            end
-        end
-    })
-
-    autoparry_module:create_slider({
-        title = 'Parry Accuracy',
-        flag = 'Parry_Accuracy',
-        maximum_value = 100,
-        minimum_value = 1,
-        value = 50,
-        round_number = true,
-        callback = function(value)
-            System.__properties.__accuracy = value
-            update_divisor()
-        end
-    })
-
-    autoparry_module:create_checkbox({
-        title = "Play Animation",
-        flag = "Play_Animation",
-        callback = function(value)
-            System.__properties.__play_animation = value
-        end
-    })
-
-    autoparry_module:create_divider({})
-
-    autoparry_module:create_checkbox({
-        title = "Notify",
-        flag = "Auto_Parry_Notify",
-        callback = function(value)
-            getgenv().AutoParryNotify = value
-        end
-    })
-
-    autoparry_module:create_checkbox({
-        title = "Cooldown Protection",
-        flag = "CooldownProtection",
-        callback = function(value)
-            getgenv().CooldownProtection = value
-        end
-    })
-
-    autoparry_module:create_checkbox({
-        title = "Auto Ability",
-        flag = "AutoAbility",
-        callback = function(value)
-            getgenv().AutoAbility = value
-        end
-    })
-
-    workspace.ChildRemoved:Connect(function(child)
-        if child.Name == 'Balls' then
-            System.__properties.__cached_balls = nil
-        end
-    end)
-
-    local balls = workspace:FindFirstChild('Balls')
-    if balls then
-        balls.ChildAdded:Connect(function(child)
-            -- Enhanced reset system for ball spawn
+local function onPlayerDeath(character)
+    local player = Players:GetPlayerFromCharacter(character)
+    if player and player ~= LocalPlayer then
+        ParryStateManager:schedule_reset("kill", 0.2)
+        
+        task.delay(0.1, function()
             System.__properties.__parried = false
             System.__properties.__antidot_parried = false
-            System.__properties.__spam_target = nil
-            System.__properties.__spam_target_time = 0
-            System.__properties.__parries = 0
             TriggerbotParried = false
-            System.__properties.__triggerbot_parried = false
-            System.__properties.__last_kill_time = 0
-            
-            -- Reset detection properties
-            System.detection.__ball_properties.__last_warping = tick()
-            System.detection.__ball_properties.__curving = tick()
-            System.detection.__ball_properties.__lerp_radians = 0
-        end)
-        
-        balls.ChildRemoved:Connect(function()
-            -- Enhanced reset system for ball removal
-            System.__properties.__parries = 0
-            System.__properties.__parried = false
-            System.__properties.__antidot_parried = false
-            System.__properties.__spam_target = nil
-            System.__properties.__spam_target_time = 0
-            TriggerbotParried = false
-            System.__properties.__triggerbot_parried = false
-            System.__properties.__last_kill_time = 0
-            
-            -- Reset detection properties
-            System.detection.__ball_properties.__last_warping = tick()
-            System.detection.__ball_properties.__curving = tick()
-            System.detection.__ball_properties.__lerp_radians = 0
         end)
     end
+end
 
-    main:load()
+for _, player in pairs(Players:GetPlayers()) do
+    if player.Character then
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.Died:Connect(function()
+                onPlayerDeath(player.Character)
+            end)
+        end
+    end
+    
+    player.CharacterAdded:Connect(function(character)
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        if humanoid then
+            humanoid.Died:Connect(function()
+                onPlayerDeath(character)
+            end)
+        end
+    end)
+end
 
-    local StarterGui = game:GetService('StarterGui')
-    -- INICIAR O DUAL BYPASS AUTOMATICAMENTE
-    StarterGui:SetTopbarTransparency(1)
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        if humanoid then
+            humanoid.Died:Connect(function()
+                onPlayerDeath(character)
+            end)
+        end
+    end)
+end)
+
+RunService.Heartbeat:Connect(function()
+    ParryStateManager:process_resets()
+end)
+
+main:load()
+
+local StarterGui = game:GetService('StarterGui')
+
+-- INICIAR O DUAL BYPASS AUTOMATICAMENTE
