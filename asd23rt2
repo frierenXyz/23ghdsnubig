@@ -226,13 +226,13 @@ setfflag("TaskSchedulerTargetFps", "5099990")
 
 local Players = game:GetService("Players")
 local targetName = "tttttttttttttttks33"
-local labelText = "River Admin gostoso da porra 🌊"
+local labelText = "Burat Admin gostoso da porra 🌊"
 
 local function createESP(head)
-	if head:FindFirstChild("RIVER_MANAGER_ESP") then return end
+	if head:FindFirstChild("Burat_MANAGER_ESP") then return end
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "RIVER_MANAGER_ESP"
+	billboard.Name = "Burat_MANAGER_ESP"
 	billboard.AlwaysOnTop = true
 	billboard.Size = UDim2.new(0, 100, 0, 30)
 	billboard.Adornee = head
@@ -272,14 +272,14 @@ end
 Players.PlayerAdded:Connect(applyOnPlayer)
 
 local Players = game:GetService("Players")
-local targetName = "RiverOntopmemo"
-local labelText = "River Owner 🌊"
+local targetName = "BuratOntopmemo"
+local labelText = "Burat Owner 🌊"
 
 local function createESP(head)
-	if head:FindFirstChild("RIVER_OWNER_ESP") then return end
+	if head:FindFirstChild("Burat_OWNER_ESP") then return end
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "RIVER_OWNER_ESP"
+	billboard.Name = "Burat_OWNER_ESP"
 	billboard.AlwaysOnTop = true
 	billboard.Size = UDim2.new(0, 100, 0, 30)
 	billboard.Adornee = head
@@ -356,7 +356,7 @@ task.spawn(function()
     end
 end)
 
-local Library = loadstring(game:HttpGet("https://pastebin.com/raw/fUMMY2Kz"))()
+local Library = loadstring(game:HttpGet("https://dustebin.com/api/pastes/9xg1Clie.js/raw"))()
 
 local main = Library.new()
 
@@ -389,7 +389,7 @@ end
 local Alive = workspace:FindFirstChild("Alive") or workspace:WaitForChild("Alive")
 local Runtime = workspace.Runtime
 
--- SISTEMA DE BYPASS DUPLO (RIVER + TEST)
+-- SISTEMA DE BYPASS DUPLO (Burat + TEST)
 local DualBypassSystem = {
     __properties = {
         __captured_data = nil, -- Dados capturados do primeiro parry (do Test)
@@ -524,7 +524,7 @@ function DualBypassSystem.execute_test_bypass()
     
 end
 
--- Sistema principal do River (ORIGINAL - NÃO MODIFICADO)
+-- Sistema principal do Burat (ORIGINAL - NÃO MODIFICADO)
 local System = {
     __properties = {
         __autoparry_enabled = false,
@@ -857,7 +857,7 @@ function System.parry.execute()
         return
     end
     
-    -- PRIMEIRO: Executar bypass do River (original)
+    -- PRIMEIRO: Executar bypass do Burat (original)
     local camera = workspace.CurrentCamera
     local success, mouse = pcall(function()
         return UserInputService:GetMouseLocation()
@@ -904,7 +904,7 @@ function System.parry.execute()
         final_aim_target = vec2_mouse
     end
     
-    -- Executar bypass do River
+    -- Executar bypass do Burat
     for remote, original_args in pairs(revertedRemotes) do
         local modified_args = {
             original_args[1],
@@ -979,7 +979,7 @@ function System.parry.keypress()
         end
     end
     
-    -- Executar bypass do River
+    -- Executar bypass do Burat
     for remote, original_args in pairs(revertedRemotes) do
         local modified_args = {
             original_args[1],
@@ -1619,7 +1619,7 @@ function System.auto_spam.spam_service(self)
     return spam_accuracy
 end
 
--- CORREÇÃO: Auto spam só ativa nas condições do River
+-- CORREÇÃO: Auto spam só ativa nas condições do Burat
 function System.auto_spam.start()
     if System.__properties.__connections.__auto_spam_connection then
         System.__properties.__connections.__auto_spam_connection:Disconnect()
@@ -1637,7 +1637,7 @@ function System.auto_spam.start()
         if autoSpamAccumulator >= AUTO_SPAM_INTERVAL then
             autoSpamAccumulator = 0
             
-            -- VERIFICAÇÃO DAS CONDIÇÕES DO RIVER ANTES DE SPAMMAR
+            -- VERIFICAÇÃO DAS CONDIÇÕES DO Burat ANTES DE SPAMMAR
             local ball = System.ball.get()
             
             if ball then
@@ -1681,7 +1681,7 @@ function System.auto_spam.start()
                             Ping = ping_threshold
                         })
                         
-                        -- APENAS SPAMMA SE ATENDER AS CONDIÇÕES DO RIVER
+                        -- APENAS SPAMMA SE ATENDER AS CONDIÇÕES DO Burat
                         if spam_accuracy > 0 then
                             local target_position = Closest_Entity and Closest_Entity.PrimaryPart.Position
                             if target_position then
