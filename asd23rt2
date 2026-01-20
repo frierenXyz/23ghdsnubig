@@ -1848,15 +1848,24 @@ function System.autoparry.start()
                 end
             end
             
-            -- Enhanced speed divisor calculation with ping compensation
+            -- Enhanced speed divisor calculation with improved ping compensation
             local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
             local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
-            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
             
-            -- Improved parry accuracy calculation for high ping
+            -- Dynamic timing adjustment based on game state
+            local dynamic_multiplier = 1.0
+            if System.__properties.__parried then
+                dynamic_multiplier = 1.2 -- Extra buffer when recently parried
+            end
+            
+            -- Improved parry accuracy calculation with better ping compensation
+            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor * dynamic_multiplier
             local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
-            local parry_accuracy = base_parry_accuracy + high_ping_buffer
+            
+            -- Enhanced high ping buffer with curve consideration
+            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 35, 6) or 0
+            local curve_buffer = curved and 2.5 or 0 -- Extra buffer for curved balls
+            local parry_accuracy = base_parry_accuracy + high_ping_buffer + curve_buffer
             
             local curved = System.detection.is_curved()
             
@@ -5737,23 +5746,86 @@ local swordFXTextbox = SkinChanger:create_textbox({
 
 SkinChanger:create_divider({})
 
-workspace.ChildRemoved:Connect(function(child)
-    if child.Name == 'Balls' then
-        System.__properties.__cached_balls = nil
+-- Enhanced reset system for consistent AP timing
+local function resetParryState(reason)
+    System.__properties.__parried = false
+    System.__properties.__training_parried = false
+    System.__properties.__antidot_parried = false
+    System.__properties.__parries = 0
+    System.__properties.__last_triggerbot_parry = 0
+    System.__properties.__triggerbot_parried = false
+    System.__properties.__spam_target = nil
+    System.__properties.__spam_target_time = 0
+    
+    -- Reset ball detection properties
+    local props = System.detection.__ball_properties
+    props.__velocity_history = {}
+    props.__position_history = {}
+    props.__last_warping = tick()
+    props.__curving = tick()
+    props.__trajectory_prediction = nil
+    
+    -- Reset dual bypass system
+    DualBypassSystem.__properties.__first_parry_done = false
+    DualBypassSystem.__properties.__virtual_input_used = false
+    
+    if getgenv().DebugMode then
+        print("[AP Reset] " .. (reason or "Unknown") .. " - All parry states reset")
+    end
+end
+
+-- Character death and respawn handlers
+LocalPlayer.CharacterRemoving:Connect(function()
+    resetParryState("Character removing")
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+    task.wait(0.5) -- Allow character to fully load
+    resetParryState("Character added")
+    
+    -- Ensure parry system is ready after respawn
+    local humanoid = character:WaitForChild("Humanoid", 5)
+    if humanoid then
+        humanoid.Died:Connect(function()
+            task.wait(0.1)
+            resetParryState("Character died")
+        end)
     end
 end)
 
+-- Enhanced ball spawn detection with immediate reset
 local balls = workspace:FindFirstChild('Balls')
 if balls then
-    balls.ChildAdded:Connect(function()
-        System.__properties.__parried = false
-        System.__properties.__antidot_parried = false
-    end)
+    local function onBallEvent(child)
+        if child:GetAttribute('realBall') then
+            resetParryState(child:IsDescendantOf(balls) and "New ball spawned" or "Ball removed")
+            
+            -- Immediate parry readiness check
+            task.spawn(function()
+                task.wait(0.05) -- Minimal delay for ball initialization
+                
+                -- Reset parry cooldowns immediately
+                if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild('Humanoid') then
+                    local humanoid = LocalPlayer.Character.Humanoid
+                    if humanoid.Health > 0 then
+                        System.__properties.__parried = false
+                        System.__properties.__training_parried = false
+                        System.__properties.__antidot_parried = false
+                    end
+                end
+            end)
+        end
+    end
+
+    balls.ChildAdded:Connect(onBallEvent)
+    balls.ChildRemoved:Connect(onBallEvent)
     
-    balls.ChildRemoved:Connect(function()
-        System.__properties.__parries = 0
-        System.__properties.__parried = false
-        System.__properties.__antidot_parried = false
+    workspace.ChildAdded:Connect(function(child)
+        if child.Name == 'Balls' and not balls then
+            balls = child
+            balls.ChildAdded:Connect(onBallEvent)
+            balls.ChildRemoved:Connect(onBallEvent)
+        end
     end)
 end
 
