@@ -916,15 +916,27 @@ function System.parry.execute()
     local remote_success = false
     for remote, original_args in pairs(revertedRemotes) do
         if remote and remote.Parent then
-            local modified_args = {
-                original_args[1],
-                original_args[2],
-                original_args[3],
-                curve_cframe,
-                event_data,
-                final_aim_target,
-                original_args[7]
-            }
+            local modified_args = {}
+            if original_args then
+                modified_args = {
+                    original_args[1],
+                    original_args[2],
+                    original_args[3],
+                    curve_cframe,
+                    event_data,
+                    final_aim_target,
+                    original_args[7]
+                }
+            else
+                -- Handle case where original_args is nil, use default values
+                modified_args = {
+                    nil, nil, nil, -- Placeholder for original_args[1], [2], [3]
+                    curve_cframe,
+                    event_data,
+                    final_aim_target,
+                    nil -- Placeholder for original_args[7]
+                }
+            end
             
             local exec_success = pcall(function()
                 if remote:IsA('RemoteEvent') then
@@ -1025,15 +1037,27 @@ function System.parry.keypress()
     
     -- Executar bypass do Burat
     for remote, original_args in pairs(revertedRemotes) do
-        local modified_args = {
-            original_args[1],
-            original_args[2],
-            original_args[3],
-            curve_cframe,
-            event_data,
-            final_aim_target,
-            original_args[7]
-        }
+        local modified_args = {}
+        if original_args then
+            modified_args = {
+                original_args[1],
+                original_args[2],
+                original_args[3],
+                curve_cframe,
+                event_data,
+                final_aim_target,
+                original_args[7]
+            }
+        else
+            -- Handle case where original_args is nil, use default values
+            modified_args = {
+                nil, nil, nil, -- Placeholder for original_args[1], [2], [3]
+                curve_cframe,
+                event_data,
+                final_aim_target,
+                nil -- Placeholder for original_args[7]
+            }
+        end
         
         pcall(function()
             if remote:IsA('RemoteEvent') then
