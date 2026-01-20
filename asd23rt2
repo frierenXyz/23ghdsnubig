@@ -5846,7 +5846,7 @@ if balls then
 end
 
 -- Enhanced death detection with immediate reset
-if LocalPlayer.Character then
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
     LocalPlayer.Character.Humanoid.Died:Connect(function()
         -- Immediate reset on death
         System.detection.reset_all_state()
