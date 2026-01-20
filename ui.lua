@@ -153,39 +153,40 @@ end
 -- Garantir que o container de notificações exista
 local NotificationContainer = CoreGui:FindFirstChild("NotificationContainer") or CreateNotificationContainer()
 
-local Config = {
-    save = function(file_name, config)
-        local success_save, result = pcall(function()
-            local flags = HttpService:JSONEncode(config)
-            writefile('Burat/'..file_name..'.json', flags)
-        end)
-        if not success_save then
-            warn('failed to save config', result)
-        end
-    end,
-    load = function(file_name, config)
-        local success_load, result = pcall(function()
-            if not isfile('Burat/'..file_name..'.json') then
-                Config.save(file_name, config)
-                return config
-            end
-            
-            local flags = readfile('Burat/'..file_name..'.json')
-            if not flags then
-                Config.save(file_name, config)
-                return config
-            end
-            return HttpService:JSONDecode(flags)
-        end)
-        
-        if not success_load then
-            warn('failed to load config', result)
+local Config = {}
+
+Config.save = function(file_name, config)
+    local success_save, result = pcall(function()
+        local flags = HttpService:JSONEncode(config)
+        writefile('Burat/'..file_name..'.json', flags)
+    end)
+    if not success_save then
+        warn('failed to save config', result)
+    end
+end
+
+Config.load = function(file_name, config)
+    local success_load, result = pcall(function()
+        if not isfile('Burat/'..file_name..'.json') then
+            Config.save(file_name, config)
             return config
         end
         
-        return result or config
+        local flags = readfile('Burat/'..file_name..'.json')
+        if not flags then
+            Config.save(file_name, config)
+            return config
+        end
+        return HttpService:JSONDecode(flags)
+    end)
+    
+    if not success_load then
+        warn('failed to load config', result)
+        return config
     end
-}
+    
+    return result or config
+end
 
 local Library = {
     _config = Config.load(tostring(game.GameId), {
