@@ -357,7 +357,7 @@ task.spawn(function()
     end
 end)
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/frierenXyz/23ghdsnubig/refs/heads/main/ui.lua"))()
+local Library = loadstring(game:HttpGet("https://pastebin.com/raw/Q0vcHJge"))()
 
 local main = Library.new()
 
