@@ -858,11 +858,13 @@ function System.parry.execute()
     end
     
     -- Reduced state management restrictions for better responsiveness
-    if ParryStateManager and ParryStateManager.is_parry_cooldown then
+    if ParryStateManager and ParryStateManager.is_parry_cooldown == true then
         return
     end
     
-    ParryStateManager.last_parry_time = tick()
+    if ParryStateManager then
+        ParryStateManager.last_parry_time = tick()
+    end
     
     -- Prepare parry data
     local camera = workspace.CurrentCamera
