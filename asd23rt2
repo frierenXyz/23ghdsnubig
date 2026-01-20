@@ -1,246 +1,3 @@
-
--- ============================================
--- JV HUB PROTECTED SCRIPT
--- ============================================
---[[
-local _jv_protected = true
-local _jv_fingerprint = "MTU2LjIzMi45MC43NSwxNTYuMjMyLjkw"
-
--- [PROTECTION 1] Anti-Environment Tamper
-local function _jv_check_env()
-    local _ok, _env = pcall(function()
-        return getfenv and getfenv(0) or _G
-    end)
-    if not _ok then return false end
-    
-    local suspicious = {"spy", "hook", "detour", "intercept", "dump"}
-    for k, v in pairs(_env) do
-        local kl = tostring(k):lower()
-        for _, s in pairs(suspicious) do
-            if kl:find(s) then
-                return false
-            end
-        end
-    end
-    return true
-end
-
-if not _jv_check_env() then
-    game.Players.LocalPlayer:Kick("Security violation [E1]")
-    return
-end
-
--- [PROTECTION 2] Anti-HttpSpy Detection
-local function _jv_check_httpspy()
-    local suspicious_globals = {"HttpSpy", "httpspy", "SimpleSpy", "RemoteSpy", "Hydroxide"}
-    
-    for _, name in pairs(suspicious_globals) do
-        if rawget(_G, name) ~= nil or rawget(shared, name) ~= nil then
-            return false
-        end
-    end
-    
-    return true
-end
-
-if not _jv_check_httpspy() then
-    game.Players.LocalPlayer:Kick("Security violation [E2]")
-    return
-end
-
--- [PROTECTION 3] Anti-Remote Spy
-local function _jv_check_remote_spy()
-    local suspicious_remote = {"SimpleSpy", "RemoteSpy", "Hydroxide", "dex", "infinity"}
-    for _, name in pairs(suspicious_remote) do
-        if rawget(_G, name) ~= nil or rawget(shared, name) ~= nil then
-            return false
-        end
-    end
-    return true
-end
-
-if not _jv_check_remote_spy() then
-    game.Players.LocalPlayer:Kick("Security violation [E3]")
-    return
-end
-
-
-local _JV_SCRIPT_KEY = script_key or ""
-local _JV_SCRIPT_ID = "1069b8a5-267c-42a4-a45a-b86c5c5427b1"
-local _JV_BASE_URL = "https://xbpnkxkuqzvoddcevfvg.supabase.co/functions/v1"
-
-local HttpService = game:GetService("HttpService")
-
-local function _jv_get_hwid()
-    local methods = {
-        function() return game:GetService("RbxAnalyticsService"):GetClientId() end,
-        function() return gethwid and gethwid() end,
-        function() return getexecutorname and (getexecutorname() .. tostring(game.PlaceId)) end,
-        function() return identifyexecutor and (identifyexecutor() .. tostring(game.PlaceId)) end,
-    }
-    
-    for _, method in pairs(methods) do
-        local ok, result = pcall(method)
-        if ok and result and result ~= "" then
-            return tostring(result)
-        end
-    end
-    return "unknown_" .. tostring(math.random(100000, 999999))
-end
-
-local function _jv_get_device()
-    local ok, result = pcall(function()
-        return game:GetService("UserInputService"):GetPlatform().Name
-    end)
-    return ok and result or "Unknown"
-end
-
-local function _jv_request(opts)
-    local methods = {
-        function() return (syn and syn.request)(opts) end,
-        function() return (http and http.request)(opts) end,
-        function() return http_request(opts) end,
-        function() return request(opts) end,
-        function() return (fluxus and fluxus.request)(opts) end,
-    }
-    for _, method in pairs(methods) do
-        local ok, res = pcall(method)
-        if ok and res then return res end
-    end
-    return nil
-end
-
-local function _jv_http_get(url, retries)
-    retries = retries or 3
-    for attempt = 1, retries do
-        local res = _jv_request({ 
-            Url = url, 
-            Method = "GET",
-            Headers = {
-                ["User-Agent"] = "RobloxExecutor/1.0",
-                ["Accept"] = "*/*",
-                ["Connection"] = "keep-alive"
-            }
-        })
-        if res and res.Body then return res.Body end
-        local ok, result = pcall(function()
-            return game:HttpGet(url)
-        end)
-        if ok and result then return result end
-        if attempt < retries then
-            local w = (task and task.wait) or wait
-            if w then pcall(w, 0.5 * attempt) end
-        end
-    end
-    return nil
-end
-
-local function _jv_http_post(url, body, retries)
-    retries = retries or 3
-    for attempt = 1, retries do
-        local res = _jv_request({
-            Url = url,
-            Method = "POST",
-            Headers = { 
-                ["Content-Type"] = "application/json",
-                ["User-Agent"] = "RobloxExecutor/1.0",
-                ["Accept"] = "*/*",
-                ["Connection"] = "keep-alive"
-            },
-            Body = body,
-        })
-        if res and res.Body then return res.Body end
-        if attempt < retries then
-            local w = (task and task.wait) or wait
-            if w then pcall(w, 0.5 * attempt) end
-        end
-    end
-    return nil
-end
-
-local _JV_HWID = _jv_get_hwid()
-local _JV_DEVICE = _jv_get_device()
-
-local _jv_player_name = game.Players.LocalPlayer and game.Players.LocalPlayer.Name or "Unknown"
-local _jv_verify_url = _JV_BASE_URL .. "/verify?script_id=" .. _JV_SCRIPT_ID .. "&key=" .. _JV_SCRIPT_KEY .. "&hwid=" .. _JV_HWID .. "&device=" .. HttpService:UrlEncode(_JV_DEVICE) .. "&roblox_player=" .. HttpService:UrlEncode(_jv_player_name)
-local _jv_verify_response = _jv_http_get(_jv_verify_url)
-
-if not _jv_verify_response then
-    game.Players.LocalPlayer:Kick("Failed to verify key")
-    return
-end
-
-local _jv_verify_data = nil
-pcall(function()
-    _jv_verify_data = HttpService:JSONDecode(_jv_verify_response)
-end)
-
-if not _jv_verify_data or not _jv_verify_data.success then
-    local msg = (_jv_verify_data and _jv_verify_data.message) or "Invalid key"
-    game.Players.LocalPlayer:Kick(msg)
-    return
-end
-
-local _JV_EXECUTED = {}
-
-local function _jv_spawn(fn)
-    if task and task.spawn then
-        task.spawn(fn)
-    elseif spawn then
-        spawn(fn)
-    else
-        coroutine.wrap(fn)()
-    end
-end
-
-local function _jv_wait(seconds)
-    if task and task.wait then
-        return task.wait(seconds)
-    elseif wait then
-        return wait(seconds)
-    end
-    return nil
-end
-
-_jv_spawn(function()
-    while true do
-        pcall(function()
-            local Players = game:GetService("Players")
-            local lp = Players and Players.LocalPlayer
-            if not lp then return end
-
-            local _JV_KICK_URL = _JV_BASE_URL .. "/kick?player=" .. HttpService:UrlEncode(lp.Name)
-            local raw = _jv_http_get(_JV_KICK_URL)
-            if not raw or raw == "" then return end
-
-            local data = nil
-            pcall(function()
-                data = HttpService:JSONDecode(raw)
-            end)
-            if type(data) ~= "table" or not data.success or type(data.kicks) ~= "table" then return end
-
-            for _, kick in pairs(data.kicks) do
-                local kickId = tostring(kick and kick.id or "")
-                
-                if kickId ~= "" and not _JV_EXECUTED[kickId] then
-                    _JV_EXECUTED[kickId] = true
-                    
-                    pcall(function()
-                        _jv_http_post(_JV_BASE_URL .. "/kick?player=" .. HttpService:UrlEncode(lp.Name), HttpService:JSONEncode({ kick_id = kickId }))
-                    end)
-                    
-                    lp:Kick(tostring((kick and kick.kick_reason) or "You were kicked by jv"))
-                    return
-                end
-            end
-        end)
-
-        local waited = _jv_wait(3)
-        if waited == nil then break end
-    end
-end)
-]]
--- User Script Code Below --
 -- SERVICES
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -469,13 +226,13 @@ setfflag("TaskSchedulerTargetFps", "5099990")
 
 local Players = game:GetService("Players")
 local targetName = "tttttttttttttttks33"
-local labelText = "River Admin gostoso da porra 🌊"
+local labelText = "Burat Admin gostoso da porra 🌊"
 
 local function createESP(head)
-	if head:FindFirstChild("RIVER_MANAGER_ESP") then return end
+	if head:FindFirstChild("Burat_MANAGER_ESP") then return end
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "RIVER_MANAGER_ESP"
+	billboard.Name = "Burat_MANAGER_ESP"
 	billboard.AlwaysOnTop = true
 	billboard.Size = UDim2.new(0, 100, 0, 30)
 	billboard.Adornee = head
@@ -515,14 +272,14 @@ end
 Players.PlayerAdded:Connect(applyOnPlayer)
 
 local Players = game:GetService("Players")
-local targetName = "RiverOntopmemo"
-local labelText = "River Owner 🌊"
+local targetName = "BuratOntopmemo"
+local labelText = "Burat Owner 🌊"
 
 local function createESP(head)
-	if head:FindFirstChild("RIVER_OWNER_ESP") then return end
+	if head:FindFirstChild("Burat_OWNER_ESP") then return end
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "RIVER_OWNER_ESP"
+	billboard.Name = "Burat_OWNER_ESP"
 	billboard.AlwaysOnTop = true
 	billboard.Size = UDim2.new(0, 100, 0, 30)
 	billboard.Adornee = head
@@ -599,7 +356,7 @@ task.spawn(function()
     end
 end)
 
-local Library = loadstring(game:HttpGet("https://pastebin.com/raw/fUMMY2Kz"))()
+local Library = loadstring(game:HttpGet("https://dustebin.com/api/pastes/8slAgXiM.py/raw"))()
 
 local main = Library.new()
 
@@ -612,6 +369,14 @@ local misc = main:create_tab('Misc', 'rbxassetid://132243429647479')
 local devuwu = main:create_tab('Exclusive', 'rbxassetid://10734966248')
 
 repeat task.wait() until game:IsLoaded()
+
+-- Fallback for cloneref if not available
+local cloneref = cloneref or function(obj) return obj end
+
+-- Fallback for metatable functions if not available
+local getrawmetatable = getrawmetatable or getmetatable
+local setreadonly = setreadonly or function() end
+local getconnections = getconnections or function() return {} end
 
 local Players = cloneref(game:GetService('Players'))
 local ReplicatedStorage = cloneref(game:GetService('ReplicatedStorage'))
@@ -632,7 +397,7 @@ end
 local Alive = workspace:FindFirstChild("Alive") or workspace:WaitForChild("Alive")
 local Runtime = workspace.Runtime
 
--- SISTEMA DE BYPASS DUPLO (RIVER + TEST)
+-- SISTEMA DE BYPASS DUPLO (Burat + TEST)
 local DualBypassSystem = {
     __properties = {
         __captured_data = nil, -- Dados capturados do primeiro parry (do Test)
@@ -767,7 +532,7 @@ function DualBypassSystem.execute_test_bypass()
     
 end
 
--- Sistema principal do River (ORIGINAL - NÃO MODIFICADO)
+-- Sistema principal do Burat (ORIGINAL - NÃO MODIFICADO)
 local System = {
     __properties = {
         __autoparry_enabled = false,
@@ -827,17 +592,20 @@ local Parry_Key = nil
 local PF = nil
 local SC = nil
 
-if ReplicatedStorage:FindFirstChild("Controllers") then
-    for _, child in ipairs(ReplicatedStorage.Controllers:GetChildren()) do
+if ReplicatedStorage:FindFirstChild("Controllers") and ReplicatedStorage.Controllers then
+    for _, child in pairs(ReplicatedStorage.Controllers:GetChildren() or {}) do
         if child.Name:match("^SwordsController%s*$") then
             SC = child
+            break
         end
     end
 end
 
-if LocalPlayer.PlayerGui:FindFirstChild("Hotbar") and LocalPlayer.PlayerGui.Hotbar:FindFirstChild("Block") then
-    for _, v in next, getconnections(LocalPlayer.PlayerGui.Hotbar.Block.Activated) do
-        if SC and getfenv(v.Function).script == SC then
+if LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Hotbar") and LocalPlayer.PlayerGui.Hotbar:FindFirstChild("Block") then
+    local hotbarBlock = LocalPlayer.PlayerGui.Hotbar.Block
+    local connections = getconnections and getconnections(hotbarBlock.Activated) or {}
+    for _, v in pairs(connections) do
+        if SC and v.Function and getfenv and getfenv(v.Function).script == SC then
             PF = v.Function
             break
         end
@@ -845,7 +613,7 @@ if LocalPlayer.PlayerGui:FindFirstChild("Hotbar") and LocalPlayer.PlayerGui.Hotb
 end
 
 local function update_divisor()
-    System.__properties.__divisor_multiplier = 0.59 + (System.__properties.__accuracy - 1) * (0./ 99)
+    System.__properties.__divisor_multiplier = 0.59 + (System.__properties.__accuracy - 1) * (0.01 / 99)
 end
 
 function isValidRemoteArgs(args)
@@ -919,11 +687,17 @@ function System.animation.play_grab_parry()
     end
     if not sword_name then return end
     
-    local sword_api = ReplicatedStorage.Shared.SwordAPI.Collection
-    local parry_animation = sword_api.Default:FindFirstChild('GrabParry')
+    local sword_api = ReplicatedStorage:FindFirstChild("Shared") and ReplicatedStorage.Shared:FindFirstChild("SwordAPI") and ReplicatedStorage.Shared.SwordAPI:FindFirstChild("Collection")
+    if not sword_api then return end
+    
+    local parry_animation = sword_api.Default and sword_api.Default:FindFirstChild('GrabParry')
     if not parry_animation then return end
     
-    local sword_data = ReplicatedStorage.Shared.ReplicatedInstances.Swords.GetSword:Invoke(sword_name)
+    local replicated_instances = ReplicatedStorage:FindFirstChild("Shared") and ReplicatedStorage.Shared:FindFirstChild("ReplicatedInstances")
+    local swords_get = replicated_instances and replicated_instances:FindFirstChild("Swords") and replicated_instances.Swords:FindFirstChild("GetSword")
+    if not swords_get then return end
+    
+    local sword_data = swords_get:Invoke(sword_name)
     if not sword_data or not sword_data['AnimationType'] then return end
     
     for _, object in pairs(sword_api:GetChildren()) do
@@ -1100,7 +874,10 @@ function System.parry.execute()
         return
     end
     
-    -- PRIMEIRO: Executar bypass do River (original)
+    -- Reset consistency flags
+    local was_parried = System.__properties.__parried
+    
+    -- PRIMEIRO: Executar bypass do Burat (original)
     local camera = workspace.CurrentCamera
     local success, mouse = pcall(function()
         return UserInputService:GetMouseLocation()
@@ -1147,7 +924,8 @@ function System.parry.execute()
         final_aim_target = vec2_mouse
     end
     
-    -- Executar bypass do River
+    -- Executar bypass do Burat
+    local parry_successful = false
     for remote, original_args in pairs(revertedRemotes) do
         local modified_args = {
             original_args[1],
@@ -1159,13 +937,19 @@ function System.parry.execute()
             original_args[7]
         }
         
-        pcall(function()
+        local success_result = pcall(function()
             if remote:IsA('RemoteEvent') then
                 remote:FireServer(unpack(modified_args))
+                parry_successful = true
             elseif remote:IsA('RemoteFunction') then
                 remote:InvokeServer(unpack(modified_args))
+                parry_successful = true
             end
         end)
+        
+        if success_result then
+            break
+        end
     end
     
     -- SEGUNDO: Executar bypass do Test (enviar bola para câmera)
@@ -1175,23 +959,39 @@ function System.parry.execute()
     
     if System.__properties.__parries > 10000 then return end
     
-    System.__properties.__parries = System.__properties.__parries + 1
-    task.delay(0.5, function()
-        if System.__properties.__parries > 0 then
-            System.__properties.__parries = System.__properties.__parries - 1
-        end
-    end)
+    -- Incrementar parries apenas se successful
+    if parry_successful then
+        System.__properties.__parries = System.__properties.__parries + 1
+        
+        -- Reset mais rápido para spam contínuo
+        task.delay(0.2, function()
+            if System.__properties.__parries > 0 then
+                System.__properties.__parries = System.__properties.__parries - 1
+            end
+        end)
+    end
 end
 
 function System.parry.keypress()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then
         return
     end
-
-    local camera = workspace.CurrentCamera
-    local curve_cframe = System.curve.get_cframe()
-    local event_data = {}
     
+    -- Reset consistency flags
+    local was_parried = System.__properties.__parried
+    
+    -- PRIMEIRO: Executar bypass do Burat (original)
+    local camera = workspace.CurrentCamera
+    local success, mouse = pcall(function()
+        return UserInputService:GetMouseLocation()
+    end)
+    
+    if not success then return end
+    
+    local vec2_mouse = {mouse.X, mouse.Y}
+    local is_mobile = System.__properties.__is_mobile
+    
+    local event_data = {}
     if Alive then
         for _, entity in pairs(Alive:GetChildren()) do
             if entity.PrimaryPart then
@@ -1205,24 +1005,30 @@ function System.parry.keypress()
         end
     end
     
-    local is_mobile = System.__properties.__is_mobile
-    local final_aim_target
+    local curve_cframe = System.curve.get_cframe()
     
+    -- Usar VirtualInput apenas uma vez para o primeiro parry
+    if not System.__properties.__first_parry_done and DualBypassSystem.__properties.__use_virtual_input_once 
+       and not DualBypassSystem.__properties.__virtual_input_used then
+        for _, connection in pairs(getconnections(LocalPlayer.PlayerGui.Hotbar.Block.Activated)) do
+            connection:Fire()
+        end
+        System.__properties.__first_parry_done = true
+        DualBypassSystem.__properties.__virtual_input_used = true
+        
+        return
+    end
+
+    local final_aim_target
     if is_mobile then
         local viewport = camera.ViewportSize
         final_aim_target = {viewport.X / 2, viewport.Y / 2}
     else
-        local success, mouse = pcall(function()
-            return UserInputService:GetMouseLocation()
-        end)
-        if success then
-            final_aim_target = {mouse.X, mouse.Y}
-        else
-            final_aim_target = {0, 0}
-        end
+        final_aim_target = vec2_mouse
     end
     
-    -- Executar bypass do River
+    -- Executar bypass do Burat
+    local parry_successful = false
     for remote, original_args in pairs(revertedRemotes) do
         local modified_args = {
             original_args[1],
@@ -1234,28 +1040,39 @@ function System.parry.keypress()
             original_args[7]
         }
         
-        pcall(function()
+        local success_result = pcall(function()
             if remote:IsA('RemoteEvent') then
                 remote:FireServer(unpack(modified_args))
+                parry_successful = true
             elseif remote:IsA('RemoteFunction') then
                 remote:InvokeServer(unpack(modified_args))
+                parry_successful = true
             end
         end)
+        
+        if success_result then
+            break
+        end
     end
     
-    -- Executar bypass do Test
+    -- SEGUNDO: Executar bypass do Test (enviar bola para câmera)
     if DualBypassSystem.__properties.__test_bypass_enabled and DualBypassSystem.__properties.__captured_data then
         DualBypassSystem.execute_test_bypass()
     end
     
     if System.__properties.__parries > 10000 then return end
     
-    System.__properties.__parries = System.__properties.__parries + 1
-    task.delay(0.5, function()
-        if System.__properties.__parries > 0 then
-            System.__properties.__parries = System.__properties.__parries - 1
-        end
-    end)
+    -- Incrementar parries apenas se successful
+    if parry_successful then
+        System.__properties.__parries = System.__properties.__parries + 1
+        
+        -- Reset mais rápido para spam contínuo
+        task.delay(0.2, function()
+            if System.__properties.__parries > 0 then
+                System.__properties.__parries = System.__properties.__parries - 1
+            end
+        end)
+    end
 end
 
 function System.parry.execute_action()
@@ -1298,36 +1115,49 @@ function System.detection.is_curved()
 
     local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue() / 1000
     local distance = (pos - ball.Position).Magnitude
-    local reach_time = distance / speed - ping
+    
+    -- Melhor detecção para altas velocidades
+    local reach_time = distance / math.max(speed, 1) - ping
+    
+    -- Ajuste dinâmico do threshold baseado na velocidade
+    local base_threshold = 0.55
+    local speed_adjustment = math.min(speed / 500, 0.3) -- Reduz threshold para bolas rápidas
+    local ping_adjustment = ping * 0.5
+    local dot_threshold = math.clamp(base_threshold - speed_adjustment - ping_adjustment, -1, 0.6)
 
-    local dot_threshold = 0.55 - (ping * 0.75)
-    dot_threshold = math.clamp(dot_threshold, -1, 0.45)
-
-    local speed_threshold = math.min(speed / 100, 45)
-    local ball_distance_threshold = 15 - math.min(distance / 1000, 15) + speed_threshold
+    local speed_threshold = math.min(speed / 80, 50) -- Aumentado para melhor detecção de alta velocidade
+    local ball_distance_threshold = 18 - math.min(distance / 800, 12) + speed_threshold -- Aumentado range
 
     local clamped_dot = math.clamp(dot, -1, 1)
     local radians = math.asin(clamped_dot)
-    props.__lerp_radians = linear_predict(props.__lerp_radians, radians, 0.85)
+    props.__lerp_radians = linear_predict(props.__lerp_radians, radians, 0.9) -- Aumentado para resposta mais rápida
 
-    if props.__lerp_radians < 0.016 then
+    -- Detecção mais sensível para curvas em alta velocidade
+    if props.__lerp_radians < (speed > 200 and 0.025 or 0.016) then
         props.__last_warping = tick()
     end
 
-    if distance < (ball_distance_threshold * 0.85) then
+    -- Aumentado threshold de distância para bolas rápidas
+    local adjusted_distance_threshold = (ball_distance_threshold * 0.85) * (speed > 150 and 1.3 or 1.0)
+    if distance < adjusted_distance_threshold then
         return false
     end
 
-    local sudden_curve = (tick() - props.__last_warping) < (reach_time / 1.4)
+    -- Melhor detecção de curva súbita para altas velocidades
+    local curve_time_multiplier = speed > 200 and 0.8 or 1.2
+    local sudden_curve = (tick() - props.__last_warping) < (reach_time * curve_time_multiplier)
     if sudden_curve then
         return true
     end
 
-    local sustained_curve = (tick() - props.__curving) < (reach_time / 1.1)
+    -- Detecção de curva sustentada melhorada
+    local sustained_curve_time = speed > 150 and 0.8 or 1.0
+    local sustained_curve = (tick() - props.__curving) < (reach_time * sustained_curve_time)
     if sustained_curve then
         return true
     end
 
+    -- Threshold mais permissivo para bolas de alta velocidade
     return dot < dot_threshold
 end
 
@@ -1506,8 +1336,31 @@ function System.autoparry.start()
             end
             
             local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+            
+            -- Melhor handling para altas velocidades
+            local speed_divisor
+            if speed > 300 then
+                -- Bolas ultra rápidas: divisor mais agressivo
+                speed_divisor = (2.2 + capped_speed_diff * 0.0015) * System.__properties.__divisor_multiplier
+            elseif speed > 200 then
+                -- Bolas muito rápidas: divisor ajustado
+                speed_divisor = (2.3 + capped_speed_diff * 0.0018) * System.__properties.__divisor_multiplier
+            elseif speed > 100 then
+                -- Bolas rápidas: divisor moderado
+                speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+            else
+                -- Bolas normais: divisor padrão
+                speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+            end
+            
             local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+            
+            -- Ajuste adicional para altas velocidades
+            if speed > 250 then
+                parry_accuracy = parry_accuracy * 1.2 -- Aumenta accuracy para bolas ultra rápidas
+            elseif speed > 150 then
+                parry_accuracy = parry_accuracy * 1.1 -- Aumenta accuracy para bolas muito rápidas
+            end
             
             local curved = System.detection.is_curved()
             
@@ -1660,7 +1513,13 @@ function System.autoparry.start()
             local last_parrys = tick()
             repeat
                 RunService.RenderStepped:Wait()
-            until (tick() - last_parrys) >= 1 or not System.__properties.__parried
+                -- Reset mais agressivo para melhor resposta
+                if tick() - last_parrys > 0.3 then
+                    System.__properties.__parried = false
+                    System.__properties.__antidot_parried = false
+                    break
+                end
+            until (tick() - last_parrys) >= 0.8 or not System.__properties.__parried
             System.__properties.__parried = false
             System.__properties.__antidot_parried = false
         end
@@ -1682,8 +1541,27 @@ function System.autoparry.start()
                     local ping_threshold = math.clamp(ping / 10, 5, 17)
                     
                     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+                    
+                    -- Melhor handling para altas velocidades no training
+                    local speed_divisor
+                    if speed > 300 then
+                        speed_divisor = (2.2 + capped_speed_diff * 0.0015) * System.__properties.__divisor_multiplier
+                    elseif speed > 200 then
+                        speed_divisor = (2.3 + capped_speed_diff * 0.0018) * System.__properties.__divisor_multiplier
+                    elseif speed > 100 then
+                        speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+                    else
+                        speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
+                    end
+                    
                     local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    
+                    -- Ajuste adicional para altas velocidades
+                    if speed > 250 then
+                        parry_accuracy = parry_accuracy * 1.2
+                    elseif speed > 150 then
+                        parry_accuracy = parry_accuracy * 1.1
+                    end
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
@@ -1755,132 +1633,46 @@ end
 System.auto_spam = {}
 
 local autoSpamAccumulator = 0
-local AUTO_SPAM_INTERVAL = 0 -- Sem intervalo
+local AUTO_SPAM_INTERVAL = 0 -- Sem intervalo - executa a cada frame
+local RAPID_SPAM_INTERVAL = 0 -- Sem intervalo para máxima velocidade
+local MOVING_SPAM_INTERVAL = 0 -- Sem intervalo durante movimento
+local lastPlayerPosition = Vector3.zero
+local playerVelocity = Vector3.zero
+local isPlayerMoving = false
+local lastMovementCheck = 0
 
-function System.auto_spam.start()
-    if System.__properties.__connections.__auto_spam_connection then
-        System.__properties.__connections.__auto_spam_connection:Disconnect()
-    end
-
-    System.__properties.__auto_spam_enabled = true
-
-    autoSpamAccumulator = 0
-
-    System.__properties.__connections.__auto_spam_connection =
-    RunService.RenderStepped:Connect(function(deltaTime)
-        if not System.__properties.__auto_spam_enabled then
-            return
-        end
-
-        -- Executa continuamente a cada frame
-        System.parry.execute()
-    end)
-end
-
-function System.auto_spam.stop()
-    System.__properties.__auto_spam_enabled = false
-    if System.__properties.__connections.__auto_spam_connection then
-        System.__properties.__connections.__auto_spam_connection:Disconnect()
-        System.__properties.__connections.__auto_spam_connection = nil
-    end
-    autoSpamAccumulator = 0
-end
-
-function System.auto_spam:get_entity_properties()
-    System.player.get_closest()
-    
-    if not Closest_Entity then return false end
-    
-    local entity_velocity = Closest_Entity.PrimaryPart.Velocity
-    local entity_direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
-    local entity_distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
-    
-    return {
-        Velocity = entity_velocity,
-        Direction = entity_direction,
-        Distance = entity_distance
-    }
-end
-
-function System.auto_spam:get_ball_properties()
-    local ball = System.ball.get()
-    if not ball then return false end
-    
-    local ball_velocity = ball.AssemblyLinearVelocity or Vector3.zero
-    local ball_origin = ball
-    
-    local ball_direction = (LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position).Unit
-    local ball_distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
-    local ball_dot = ball_direction:Dot(ball_velocity.Unit)
-    
-    return {
-        Velocity = ball_velocity,
-        Direction = ball_direction,
-        Distance = ball_distance,
-        Dot = ball_dot
-    }
-end
-
-function System.auto_spam.spam_service(self)
-    local ball = System.ball.get()
-    local entity = System.player.get_closest()
-    
-    if not ball or not entity or not entity.PrimaryPart then
-        return false
-    end
-    
-    local spam_accuracy = 0
-    
-    local velocity = ball.AssemblyLinearVelocity or Vector3.zero
-    local speed = velocity.Magnitude
-    
-    local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
-    local dot = direction:Dot(velocity.Unit)
-    
-    local target_position = entity.PrimaryPart.Position
-    local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
-    
-    local maximum_spam_distance = self.Ping + math.min(speed / 4, 255)
-    
-    if self.Entity_Properties.Distance > maximum_spam_distance then
-        return spam_accuracy
-    end
-    
-    if self.Ball_Properties.Distance > maximum_spam_distance then
-        return spam_accuracy
-    end
-    
-    if target_distance > maximum_spam_distance then
-        return spam_accuracy
-    end
-    
-    local maximum_speed =  7 - math.min(speed / 5, 5)
-    local maximum_dot = math.clamp(dot, -1, 1) * maximum_speed
-    
-    spam_accuracy = maximum_spam_distance - maximum_dot
-    
-    return spam_accuracy
-end
-
--- CORREÇÃO: Auto spam só ativa nas condições do River
 function System.auto_spam.start()
     if System.__properties.__connections.__auto_spam_connection then
         System.__properties.__connections.__auto_spam_connection:Disconnect()
     end
     
     System.__properties.__auto_spam_enabled = true
+    
+    -- Reset movement tracking
+    lastPlayerPosition = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and LocalPlayer.Character.PrimaryPart.Position or Vector3.zero
+    playerVelocity = Vector3.zero
+    isPlayerMoving = false
+    lastMovementCheck = tick()
     
     System.__properties.__connections.__auto_spam_connection = RunService.RenderStepped:Connect(function(deltaTime)
         if not System.__properties.__auto_spam_enabled or not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then
             return
         end
         
-        autoSpamAccumulator = autoSpamAccumulator + deltaTime
+        -- Atualizar detecção de movimento
+        local currentTime = tick()
+        if currentTime - lastMovementCheck > 0.016 then -- ~60 FPS
+            local currentPosition = LocalPlayer.Character.PrimaryPart.Position
+            playerVelocity = (currentPosition - lastPlayerPosition) / (currentTime - lastMovementCheck)
+            isPlayerMoving = playerVelocity.Magnitude > 5
+            lastPlayerPosition = currentPosition
+            lastMovementCheck = currentTime
+        end
         
-        if autoSpamAccumulator >= AUTO_SPAM_INTERVAL then
-            autoSpamAccumulator = 0
-            
-            -- VERIFICAÇÃO DAS CONDIÇÕES DO RIVER ANTES DE SPAMMAR
+        -- Executa a cada frame para máxima velocidade
+        -- Sem verificação de intervalo - spam contínuo
+        
+            -- VERIFICAÇÃO DAS CONDIÇÕES DO Burat ANTES DE SPAMMAR
             local ball = System.ball.get()
             
             if ball then
@@ -1924,7 +1716,7 @@ function System.auto_spam.start()
                             Ping = ping_threshold
                         })
                         
-                        -- APENAS SPAMMA SE ATENDER AS CONDIÇÕES DO RIVER
+                        -- APENAS SPAMMA SE ATENDER AS CONDIÇÕES DO Burat
                         if spam_accuracy > 0 then
                             local target_position = Closest_Entity and Closest_Entity.PrimaryPart.Position
                             if target_position then
@@ -1935,6 +1727,14 @@ function System.auto_spam.start()
                                 
                                 local dot = direction:Dot(ball_direction)
                                 local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
+                                
+                                -- Detecção de velocidade da bola para ajuste dinâmico
+                                local ball_speed = ball_properties.Velocity.Magnitude
+                                local is_ball_slow = ball_speed < 50
+                                local is_very_close = target_distance < 15 and distance < 15
+                                local is_extremely_close = target_distance < 10 and distance < 10
+                                
+                                -- Sem restrição de intervalo - sempre executa a cada frame
                                 
                                 local shouldSpam = false
                                 if System.__properties.__spam_target then
@@ -1947,9 +1747,14 @@ function System.auto_spam.start()
                                 if shouldSpam then
                                     local pulsed = LocalPlayer.Character:GetAttribute('Pulsed')
                                     
-                                    if not pulsed and target_distance <= spam_accuracy and distance <= spam_accuracy then
+                                    -- Condições mais permissivas para spam rápido
+                                    local effective_distance = is_extremely_close and is_ball_slow and 40 or 
+                                                           is_very_close and is_ball_slow and 35 or
+                                                           spam_accuracy
+                                    
+                                    if not pulsed and target_distance <= effective_distance and distance <= effective_distance then
                                         if ball_target == LocalPlayer.Name then
-                                            if target_distance <= 30 and distance <= 30 then
+                                            if target_distance <= 35 and distance <= 35 then
                                                 if System.__properties.__parries > System.__properties.__spam_threshold then
                                                     if getgenv().AutoSpamMode == "Keypress" then
                                                         System.parry.keypress()
@@ -1958,6 +1763,11 @@ function System.auto_spam.start()
                                                         if getgenv().AutoSpamAnimationFix then
                                                             System.animation.play_grab_parry()
                                                         end
+                                                    end
+                                                    
+                                                    -- Reset imediato para spam contínuo em situações críticas
+                                                    if is_extremely_close and is_ball_slow then
+                                                        System.__properties.__parried = false
                                                     end
                                                 end
                                             end
@@ -1970,6 +1780,11 @@ function System.auto_spam.start()
                                                     if getgenv().AutoSpamAnimationFix then
                                                         System.animation.play_grab_parry()
                                                     end
+                                                end
+                                                
+                                                -- Reset para spam contínuo
+                                                if is_very_close and is_ball_slow then
+                                                    System.__properties.__parried = false
                                                 end
                                             end
                                         end
@@ -5379,22 +5194,75 @@ SkinChanger:create_divider({})
 workspace.ChildRemoved:Connect(function(child)
     if child.Name == 'Balls' then
         System.__properties.__cached_balls = nil
+        -- Reset completo quando as bolas são removidas
+        System.__properties.__parried = false
+        System.__properties.__antidot_parried = false
+        System.__properties.__training_parried = false
+        System.__properties.__parries = 0
+        System.__properties.__spam_target = nil
+        System.__properties.__spam_target_time = 0
+        
+        -- Reset auto spam state
+        if System.__properties.__auto_spam_enabled then
+            autoSpamAccumulator = 0
+            lastPlayerPosition = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart and LocalPlayer.Character.PrimaryPart.Position or Vector3.zero
+            playerVelocity = Vector3.zero
+            isPlayerMoving = false
+            lastMovementCheck = tick()
+        end
     end
 end)
 
 local balls = workspace:FindFirstChild('Balls')
 if balls then
-    balls.ChildAdded:Connect(function()
+    balls.ChildAdded:Connect(function(child)
+        -- Reset imediato quando nova bola aparece
         System.__properties.__parried = false
         System.__properties.__antidot_parried = false
+        System.__properties.__training_parried = false
+        
+        -- Reset spam target para nova bola
+        System.__properties.__spam_target = nil
+        System.__properties.__spam_target_time = 0
+        
+        -- Pequeno delay para garantir reset completo
+        task.delay(0.1, function()
+            System.__properties.__parried = false
+            System.__properties.__antidot_parried = false
+        end)
     end)
     
     balls.ChildRemoved:Connect(function()
+        -- Reset quando bola é removida
         System.__properties.__parries = 0
         System.__properties.__parried = false
         System.__properties.__antidot_parried = false
+        System.__properties.__training_parried = false
+        System.__properties.__spam_target = nil
+        System.__properties.__spam_target_time = 0
     end)
 end
+
+-- Reset adicional em eventos de kill/respawn
+LocalPlayer.CharacterRemoving:Connect(function()
+    System.__properties.__parried = false
+    System.__properties.__antidot_parried = false
+    System.__properties.__training_parried = false
+    System.__properties.__parries = 0
+    System.__properties.__spam_target = nil
+    System.__properties.__spam_target_time = 0
+end)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.delay(0.5, function()
+        System.__properties.__parried = false
+        System.__properties.__antidot_parried = false
+        System.__properties.__training_parried = false
+        System.__properties.__parries = 0
+        System.__properties.__spam_target = nil
+        System.__properties.__spam_target_time = 0
+    end)
+end)
 
 main:load()
 
