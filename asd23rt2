@@ -2124,9 +2124,19 @@ end
 
 System.auto_spam = {}
 
--- Aggressive spam settings - maximum speed, no restrictions
+-- Optimized spam settings with proper intervals
 local lastSpamTime = 0
-local spamDelay = 0.005 -- 5ms between spams for ultra-aggressive mode
+local spamDelay = 0.016 -- 16ms (60 FPS) for better performance
+local AUTO_SPAM_INTERVAL = 0.016 -- Fixed missing variable
+local autoSpamAccumulator = 0
+
+-- Performance optimization: cache frequently accessed data
+local cachedBall = nil
+local cachedBallTime = 0
+local BALL_CACHE_DURATION = 0.1
+local cachedClosestEntity = nil
+local cachedEntityTime = 0
+local ENTITY_CACHE_DURATION = 0.2
 
 function System.auto_spam.start()
     if System.__properties.__connections.__auto_spam_connection then
@@ -2135,19 +2145,23 @@ function System.auto_spam.start()
 
     System.__properties.__auto_spam_enabled = true
     lastSpamTime = 0
+    autoSpamAccumulator = 0
+    cachedBall = nil
+    cachedClosestEntity = nil
 
     System.__properties.__connections.__auto_spam_connection = RunService.RenderStepped:Connect(function(deltaTime)
         if not System.__properties.__auto_spam_enabled or not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then
             return
         end
 
-        local currentTime = tick()
+        -- Use accumulator for precise timing control
+        autoSpamAccumulator = autoSpamAccumulator + deltaTime
         
-        -- Ultra-aggressive spam with minimal delay
-        if currentTime - lastSpamTime >= spamDelay then
-            lastSpamTime = currentTime
+        if autoSpamAccumulator >= AUTO_SPAM_INTERVAL then
+            autoSpamAccumulator = 0
             
-            local ball = System.ball.get()
+            -- Optimized ball detection with caching
+            local ball = System.ball.get_cached()
             
             if ball then
                 local zoomies = ball:FindFirstChild('zoomies')
@@ -2157,31 +2171,33 @@ function System.auto_spam.start()
                     local velocity = zoomies.VectorVelocity
                     local speed = velocity.Magnitude
                     
-                    -- Minimal checks - almost no restrictions
-                    local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
-                    local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
-                    local dot = direction:Dot(velocity.Unit)
+                    -- Quick pulse check to avoid unnecessary processing
+                    local pulsed = LocalPlayer.Character:GetAttribute('Pulsed')
                     
-                    -- Ultra-loose conditions - spam in almost any situation
-                    local shouldSpam = true -- Default to spam
-                    
-                    -- Only don't spam if ball is completely irrelevant
-                    if speed < 1 and distance > 100 and dot < -0.8 then
-                        shouldSpam = false
-                    end
-                    
-                    -- Execute spam immediately with zero restrictions
-                    if shouldSpam then
-                        local pulsed = LocalPlayer.Character:GetAttribute('Pulsed')
+                    if not pulsed then
+                        -- Optimized entity detection with caching
+                        local closest = System.player.get_closest_cached()
                         
-                        if not pulsed then
-                            -- Execute parry immediately
-                            if getgenv().AutoSpamMode == "Keypress" then
-                                System.parry.keypress()
-                            else
-                                System.parry.execute()
-                                if getgenv().AutoSpamAnimationFix then
-                                    System.animation.play_grab_parry()
+                        if closest then
+                            local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
+                            local ping_threshold = math.clamp(ping / 5, 1, 16)
+                            
+                            -- Simplified distance checks
+                            local ball_distance = LocalPlayer:DistanceFromCharacter(ball.Position)
+                            local target_distance = LocalPlayer:DistanceFromCharacter(closest.PrimaryPart.Position)
+                            
+                            -- Quick threshold check
+                            local max_distance = ping_threshold + math.min(speed / 4, 100)
+                            
+                            if ball_distance <= max_distance and target_distance <= max_distance then
+                                -- Execute parry
+                                if getgenv().AutoSpamMode == "Keypress" then
+                                    System.parry.keypress()
+                                else
+                                    System.parry.execute()
+                                    if getgenv().AutoSpamAnimationFix then
+                                        System.animation.play_grab_parry()
+                                    end
                                 end
                             end
                         end
@@ -2198,7 +2214,10 @@ function System.auto_spam.stop()
         System.__properties.__connections.__auto_spam_connection:Disconnect()
         System.__properties.__connections.__auto_spam_connection = nil
     end
+    lastSpamTime = 0
     autoSpamAccumulator = 0
+    cachedBall = nil
+    cachedClosestEntity = nil
 end
 
 function System.auto_spam:get_entity_properties()
@@ -2277,137 +2296,20 @@ function System.auto_spam.spam_service(self)
     return spam_accuracy
 end
 
--- CORREÇÃO: Auto spam só ativa nas condições do Burat
-function System.auto_spam.start()
-    if System.__properties.__connections.__auto_spam_connection then
-        System.__properties.__connections.__auto_spam_connection:Disconnect()
+function System.ball.get_cached()
+    if not cachedBall or tick() - cachedBallTime > BALL_CACHE_DURATION then
+        cachedBall = System.ball.get()
+        cachedBallTime = tick()
     end
-    
-    System.__properties.__auto_spam_enabled = true
-    
-    System.__properties.__connections.__auto_spam_connection = RunService.RenderStepped:Connect(function(deltaTime)
-        if not System.__properties.__auto_spam_enabled or not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then
-            return
-        end
-        
-        autoSpamAccumulator = autoSpamAccumulator + deltaTime
-        
-        if autoSpamAccumulator >= AUTO_SPAM_INTERVAL then
-            autoSpamAccumulator = 0
-            
-            -- VERIFICAÇÃO DAS CONDIÇÕES DO Burat ANTES DE SPAMMAR
-            local ball = System.ball.get()
-            
-            if ball then
-                local zoomies = ball:FindFirstChild('zoomies')
-                
-                if zoomies then
-                    System.player.get_closest()
-                    
-                    if System.__properties.__spam_target then
-                        local targetStillValid = false
-                        for _, entity in pairs(Alive:GetChildren()) do
-                            if entity == System.__properties.__spam_target then
-                                targetStillValid = true
-                                break
-                            end
-                        end
-                        
-                        if not targetStillValid then
-                            System.__properties.__spam_target = nil
-                            System.__properties.__spam_target_time = 0
-                        end
-                    end
-                    
-                    if not System.__properties.__spam_target or (tick() - System.__properties.__spam_target_time > 1) then
-                        System.__properties.__spam_target = Closest_Entity
-                        System.__properties.__spam_target_time = tick()
-                    end
-                    
-                    local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue()
-                    local ping_threshold = math.clamp(ping / 5, 1, 16)
-                    
-                    local ball_target = ball:GetAttribute('target')
-                    
-                    local ball_properties = System.auto_spam:get_ball_properties()
-                    local entity_properties = System.auto_spam:get_entity_properties()
-                    
-                    if ball_properties and entity_properties and ball_target then
-                        local spam_accuracy = System.auto_spam.spam_service({
-                            Ball_Properties = ball_properties,
-                            Entity_Properties = entity_properties,
-                            Ping = ping_threshold
-                        })
-                        
-                        -- APENAS SPAMMA SE ATENDER AS CONDIÇÕES DO Burat
-                        if spam_accuracy > 0 then
-                            local target_position = Closest_Entity and Closest_Entity.PrimaryPart.Position
-                            if target_position then
-                                local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
-                                
-                                local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
-                                local ball_direction = zoomies.VectorVelocity.Unit
-                                
-                                local dot = direction:Dot(ball_direction)
-                                local distance = LocalPlayer:DistanceFromCharacter(ball.Position)
-                                
-                                local shouldSpam = false
-                                if System.__properties.__spam_target then
-                                    local spamTargetName = System.__properties.__spam_target.Name
-                                    if ball_target == spamTargetName or ball_target == LocalPlayer.Name then
-                                        shouldSpam = true
-                                    end
-                                end
-                                
-                                if shouldSpam then
-                                    local pulsed = LocalPlayer.Character:GetAttribute('Pulsed')
-                                    
-                                    if not pulsed and target_distance <= spam_accuracy and distance <= spam_accuracy then
-                                        if ball_target == LocalPlayer.Name then
-                                            if target_distance <= 30 and distance <= 30 then
-                                                if System.__properties.__parries > System.__properties.__spam_threshold then
-                                                    if getgenv().AutoSpamMode == "Keypress" then
-                                                        System.parry.keypress()
-                                                    else
-                                                        System.parry.execute()
-                                                        if getgenv().AutoSpamAnimationFix then
-                                                            System.animation.play_grab_parry()
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        else
-                                            if System.__properties.__parries > System.__properties.__spam_threshold then
-                                                if getgenv().AutoSpamMode == "Keypress" then
-                                                    System.parry.keypress()
-                                                else
-                                                    System.parry.execute()
-                                                    if getgenv().AutoSpamAnimationFix then
-                                                        System.animation.play_grab_parry()
-                                                    end
-                                                end
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
+    return cachedBall
 end
 
-function System.auto_spam.stop()
-    System.__properties.__auto_spam_enabled = false
-    if System.__properties.__connections.__auto_spam_connection then
-        System.__properties.__connections.__auto_spam_connection:Disconnect()
-        System.__properties.__connections.__auto_spam_connection = nil
+function System.player.get_closest_cached()
+    if not cachedClosestEntity or tick() - cachedEntityTime > ENTITY_CACHE_DURATION then
+        cachedClosestEntity = System.player.get_closest()
+        cachedEntityTime = tick()
     end
-    System.__properties.__spam_target = nil
-    System.__properties.__spam_target_time = 0
-    autoSpamAccumulator = 0
+    return cachedClosestEntity
 end
 
 local function create_mobile_button(name, position_y, color)
