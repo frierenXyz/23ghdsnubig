@@ -851,25 +851,20 @@ end
 
 System.parry = {}
 
--- MODIFICADO: Agora executa ambos os bypass com gerenciamento de estado aprimorado
+-- Enhanced parry execution with multiple fallback methods
 function System.parry.execute()
     if System.__properties.__parries > 10000 or not LocalPlayer.Character then
         return
     end
     
-    -- State management checks
-    if ParryStateManager.is_parry_cooldown or ParryStateManager.state_locks.parry_lock then
-        return
-    end
-    
-    -- Lock parry state to prevent conflicts
-    if not ParryStateManager:lock_state("parry_lock", 0.05) then
+    -- Reduced state management restrictions for better responsiveness
+    if ParryStateManager and ParryStateManager.is_parry_cooldown then
         return
     end
     
     ParryStateManager.last_parry_time = tick()
     
-    -- PRIMEIRO: Executar bypass do Burat (original)
+    -- Prepare parry data
     local camera = workspace.CurrentCamera
     local success, mouse = pcall(function()
         return UserInputService:GetMouseLocation()
@@ -896,15 +891,14 @@ function System.parry.execute()
     
     local curve_cframe = System.curve.get_cframe()
     
-    -- Usar VirtualInput apenas uma vez para o primeiro parry
+    -- Virtual input for first parry
     if not System.__properties.__first_parry_done and DualBypassSystem.__properties.__use_virtual_input_once 
        and not DualBypassSystem.__properties.__virtual_input_used then
         for _, connection in pairs(getconnections(LocalPlayer.PlayerGui.Hotbar.Block.Activated)) do
-            connection:Fire()
+            pcall(connection.Fire, connection)
         end
         System.__properties.__first_parry_done = true
         DualBypassSystem.__properties.__virtual_input_used = true
-        
         return
     end
 
@@ -916,44 +910,76 @@ function System.parry.execute()
         final_aim_target = vec2_mouse
     end
     
-    -- Executar bypass do Burat
+    -- Method 1: Try using reverted remotes
+    local remote_success = false
     for remote, original_args in pairs(revertedRemotes) do
-        local modified_args = {
-            original_args[1],
-            original_args[2],
-            original_args[3],
-            curve_cframe,
-            event_data,
-            final_aim_target,
-            original_args[7]
-        }
-        
-        pcall(function()
-            if remote:IsA('RemoteEvent') then
-                remote:FireServer(unpack(modified_args))
-            elseif remote:IsA('RemoteFunction') then
-                remote:InvokeServer(unpack(modified_args))
+        if remote and remote.Parent then
+            local modified_args = {
+                original_args[1],
+                original_args[2],
+                original_args[3],
+                curve_cframe,
+                event_data,
+                final_aim_target,
+                original_args[7]
+            }
+            
+            local exec_success = pcall(function()
+                if remote:IsA('RemoteEvent') then
+                    remote:FireServer(unpack(modified_args))
+                    remote_success = true
+                elseif remote:IsA('RemoteFunction') then
+                    remote:InvokeServer(unpack(modified_args))
+                    remote_success = true
+                end
+            end)
+            
+            if exec_success and remote_success then
+                break
             end
-        end)
+        end
     end
     
-    -- SEGUNDO: Executar bypass do Test (enviar bola para câmera)
+    -- Method 2: Fallback to direct remote calls if no reverted remotes work
+    if not remote_success then
+        for _, remote in pairs(ReplicatedStorage:GetChildren()) do
+            if remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") then
+                pcall(function()
+                    if remote:IsA('RemoteEvent') then
+                        remote:FireServer()
+                    else
+                        remote:InvokeServer()
+                    end
+                end)
+            end
+        end
+    end
+    
+    -- Method 3: Execute test bypass if available
     if DualBypassSystem.__properties.__test_bypass_enabled and DualBypassSystem.__properties.__captured_data then
-        DualBypassSystem.execute_test_bypass()
+        pcall(DualBypassSystem.execute_test_bypass)
     end
     
     if System.__properties.__parries > 10000 then return end
     
     System.__properties.__parries = System.__properties.__parries + 1
     
-    -- Schedule parry reset with improved timing
-    ParryStateManager:schedule_reset("parry", 0.5)
-    
-    -- Set cooldown to prevent spam
-    ParryStateManager.is_parry_cooldown = true
-    task.delay(0.1, function()
-        ParryStateManager.is_parry_cooldown = false
-    end)
+    -- Schedule reset with proper timing
+    if ParryStateManager then
+        ParryStateManager:schedule_reset("parry", 0.5)
+        ParryStateManager.is_parry_cooldown = true
+        task.delay(0.1, function()
+            if ParryStateManager then
+                ParryStateManager.is_parry_cooldown = false
+            end
+        end)
+    else
+        -- Fallback reset if state manager not available
+        task.delay(0.5, function()
+            System.__properties.__parried = false
+            System.__properties.__antidot_parried = false
+        end)
+    end
 end
 
 function System.parry.keypress()
@@ -1262,7 +1288,7 @@ ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent:Connect(function(a, b)
     end
 end)
 
--- Enhanced state management for consistent parry performance
+-- Simplified state management to prevent conflicts
 local ParryStateManager = {
     last_parry_time = 0,
     last_kill_time = 0,
@@ -1270,21 +1296,7 @@ local ParryStateManager = {
     last_spam_end_time = 0,
     is_parry_cooldown = false,
     is_transitioning = false,
-    state_locks = {
-        parry_lock = false,
-        spam_lock = false,
-        kill_lock = false
-    },
     reset_queue = {},
-    
-    lock_state = function(self, lock_type, duration)
-        if self.state_locks[lock_type] then return false end
-        self.state_locks[lock_type] = true
-        task.delay(duration or 0.1, function()
-            self.state_locks[lock_type] = false
-        end)
-        return true
-    end,
     
     reset_all_states = function(self)
         self.last_parry_time = 0
@@ -1293,12 +1305,6 @@ local ParryStateManager = {
         self.last_spam_end_time = 0
         self.is_parry_cooldown = false
         self.is_transitioning = false
-        
-        for lock_type in pairs(self.state_locks) do
-            self.state_locks[lock_type] = false
-        end
-        
-        -- Clear reset queue
         self.reset_queue = {}
     end,
     
@@ -1321,7 +1327,6 @@ local ParryStateManager = {
                     System.__properties.__parries = 0
                     System.__properties.__parried = false
                     System.__properties.__antidot_parried = false
-                    -- Reset curve detection properties
                     local props = System.detection.__ball_properties
                     props.__velocity_history = {}
                     props.__curve_confidence = 0
@@ -1768,60 +1773,17 @@ function System.auto_spam.spam_service(self)
     
     if not ball or not entity or not entity.PrimaryPart then
         return false
-    end
-    
-    local spam_accuracy = 0
-    
-    local velocity = ball.AssemblyLinearVelocity or Vector3.zero
-    local speed = velocity.Magnitude
-    
-    local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
-    local dot = direction:Dot(velocity.Unit)
-    
-    local target_position = entity.PrimaryPart.Position
-    local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
-    
-    local maximum_spam_distance = self.Ping + math.min(speed / 4, 255)
-    
-    if self.Entity_Properties.Distance > maximum_spam_distance then
-        return spam_accuracy
-    end
-    
-    if self.Ball_Properties.Distance > maximum_spam_distance then
-        return spam_accuracy
-    end
-    
-    if target_distance > maximum_spam_distance then
-        return spam_accuracy
-    end
-    
-    local maximum_speed =  7 - math.min(speed / 5, 5)
-    local maximum_dot = math.clamp(dot, -1, 1) * maximum_speed
-    
-    spam_accuracy = maximum_spam_distance - maximum_dot
-    
-    return spam_accuracy
-end
-
--- CORREÇÃO: Auto spam só ativa nas condições do Burat
-function System.auto_spam.start()
-    if System.__properties.__connections.__auto_spam_connection then
-        System.__properties.__connections.__auto_spam_connection:Disconnect()
-    end
-    
-    System.__properties.__auto_spam_enabled = true
-    
     System.__properties.__connections.__auto_spam_connection = RunService.RenderStepped:Connect(function(deltaTime)
         if not System.__properties.__auto_spam_enabled or not LocalPlayer.Character or LocalPlayer.Character.Parent ~= Alive then
             return
         end
-        
+
         autoSpamAccumulator = autoSpamAccumulator + deltaTime
         
         if autoSpamAccumulator >= AUTO_SPAM_INTERVAL then
             autoSpamAccumulator = 0
             
-            -- VERIFICAÇÃO DAS CONDIÇÕES DO Burat ANTES DE SPAMMAR
+            -- Enhanced condition checking
             local ball = System.ball.get()
             
             if ball then
@@ -1830,6 +1792,7 @@ function System.auto_spam.start()
                 if zoomies then
                     System.player.get_closest()
                     
+                    -- Enhanced target validation
                     if System.__properties.__spam_target then
                         local targetStillValid = false
                         for _, entity in pairs(Alive:GetChildren()) do
@@ -1865,7 +1828,7 @@ function System.auto_spam.start()
                             Ping = ping_threshold
                         })
                         
-                        -- APENAS SPAMMA SE ATENDER AS CONDIÇÕES DO Burat
+                        -- Enhanced spam conditions
                         if spam_accuracy > 0 then
                             local target_position = Closest_Entity and Closest_Entity.PrimaryPart.Position
                             if target_position then
@@ -1888,10 +1851,12 @@ function System.auto_spam.start()
                                 if shouldSpam then
                                     local pulsed = LocalPlayer.Character:GetAttribute('Pulsed')
                                     
+                                    -- Enhanced spam execution with better timing
                                     if not pulsed and target_distance <= spam_accuracy and distance <= spam_accuracy then
                                         if ball_target == LocalPlayer.Name then
                                             if target_distance <= 30 and distance <= 30 then
-                                                if System.__properties.__parries > System.__properties.__spam_threshold then
+                                                -- Reduced parry threshold for better spam performance
+                                                if System.__properties.__parries > System.__properties.__spam_threshold * 0.8 then
                                                     if getgenv().AutoSpamMode == "Keypress" then
                                                         System.parry.keypress()
                                                     else
@@ -1901,15 +1866,15 @@ function System.auto_spam.start()
                                                         end
                                                     end
                                                 end
-                                            end
-                                        else
-                                            if System.__properties.__parries > System.__properties.__spam_threshold then
-                                                if getgenv().AutoSpamMode == "Keypress" then
-                                                    System.parry.keypress()
-                                                else
-                                                    System.parry.execute()
-                                                    if getgenv().AutoSpamAnimationFix then
-                                                        System.animation.play_grab_parry()
+                                            else
+                                                if System.__properties.__parries > System.__properties.__spam_threshold * 0.8 then
+                                                    if getgenv().AutoSpamMode == "Keypress" then
+                                                        System.parry.keypress()
+                                                    else
+                                                        System.parry.execute()
+                                                        if getgenv().AutoSpamAnimationFix then
+                                                            System.animation.play_grab_parry()
+                                                        end
                                                     end
                                                 end
                                             end
@@ -1934,6 +1899,82 @@ function System.auto_spam.stop()
     System.__properties.__spam_target = nil
     System.__properties.__spam_target_time = 0
     autoSpamAccumulator = 0
+end
+
+function System.auto_spam:get_entity_properties()
+    System.player.get_closest()
+    
+    if not Closest_Entity then return false end
+    
+    local entity_velocity = Closest_Entity.PrimaryPart.Velocity
+    local entity_direction = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Unit
+    local entity_distance = (LocalPlayer.Character.PrimaryPart.Position - Closest_Entity.PrimaryPart.Position).Magnitude
+    
+    return {
+        Velocity = entity_velocity,
+        Direction = entity_direction,
+        Distance = entity_distance
+    }
+end
+
+function System.auto_spam:get_ball_properties()
+    local ball = System.ball.get()
+    if not ball then return false end
+    
+    local ball_velocity = ball.AssemblyLinearVelocity or Vector3.zero
+    local ball_origin = ball
+    
+    local ball_direction = (LocalPlayer.Character.PrimaryPart.Position - ball_origin.Position).Unit
+    local ball_distance = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Magnitude
+    local ball_dot = ball_direction:Dot(ball_velocity.Unit)
+    
+    return {
+        Velocity = ball_velocity,
+        Direction = ball_direction,
+        Distance = ball_distance,
+        Dot = ball_dot
+    }
+end
+
+function System.auto_spam.spam_service(self)
+    local ball = System.ball.get()
+    local entity = System.player.get_closest()
+    
+    if not ball or not entity or not entity.PrimaryPart then
+        return false
+    end
+    
+    local spam_accuracy = 0
+    
+    local velocity = ball.AssemblyLinearVelocity or Vector3.zero
+    local speed = velocity.Magnitude
+    
+    local direction = (LocalPlayer.Character.PrimaryPart.Position - ball.Position).Unit
+    local dot = direction:Dot(velocity.Unit)
+    
+    local target_position = entity.PrimaryPart.Position
+    local target_distance = LocalPlayer:DistanceFromCharacter(target_position)
+    
+    local maximum_spam_distance = self.Ping + math.min(speed / 4, 255)
+    
+    if self.Entity_Properties.Distance > maximum_spam_distance then
+        return spam_accuracy
+    end
+    
+    if self.Ball_Properties.Distance > maximum_spam_distance then
+        return spam_accuracy
+    end
+    
+    if target_distance > maximum_spam_distance then
+        return spam_accuracy
+    end
+    
+    local maximum_speed =  7 - math.min(speed / 5, 5)
+    local maximum_dot = math.clamp(dot, -1, 1) * maximum_speed
+    
+    spam_accuracy = maximum_spam_distance - maximum_dot
+    
+    return spam_accuracy
 end
 
 local function create_mobile_button(name, position_y, color)
