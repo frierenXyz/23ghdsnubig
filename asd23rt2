@@ -544,6 +544,8 @@ local System = {
         __grab_animation = nil,
         __tornado_time = tick(),
         __first_parry_done = false,
+        __last_parry_time = 0,
+        __last_antidot_check = 0,
         __connections = {},
         __reverted_remotes = {},
         __spam_accumulator = 0,
@@ -1924,13 +1926,11 @@ function System.autoparry.start()
                         System.__properties.__parried = true
                         System.__properties.__antidot_parried = true
                         System.__properties.__last_antidot_check = now
-                        continue
-                    end
                 end
             end
             
             if should_use_triggerbot and System.__properties.__triggerbot_enabled then
-                if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                if ball_target == LocalPlayer.Name and distance <= adjusted_parry_accuracy then
                     if getgenv().CooldownProtection then
                         local ParryCD = LocalPlayer.PlayerGui.Hotbar.Block.UIGradient
                         if ParryCD.Offset.Y < 0.4 then
@@ -1949,6 +1949,7 @@ function System.autoparry.start()
                                LocalPlayer.Character.Abilities:FindFirstChild("Fracture") and LocalPlayer.Character.Abilities["Fracture"].Enabled or
                                LocalPlayer.Character.Abilities:FindFirstChild("Death Slash") and LocalPlayer.Character.Abilities["Death Slash"].Enabled then
                                 System.__properties.__parried = true
+                                System.__properties.__last_parry_time = current_time
                                 ReplicatedStorage.Remotes.AbilityButtonPress:Fire()
                                 task.wait(2.432)
                                 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true)
@@ -1957,18 +1958,19 @@ function System.autoparry.start()
                         end
                     end
                     
-                    if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                    if ball_target == LocalPlayer.Name and distance <= adjusted_parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
                             System.parry.keypress()
                         else
                             System.parry.execute_action()
                         end
                         System.__properties.__parried = true
+                        System.__properties.__last_parry_time = current_time
                         TriggerbotParried = true
                     end
                 end
             else
-                if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                if ball_target == LocalPlayer.Name and distance <= adjusted_parry_accuracy then
                     if getgenv().CooldownProtection then
                         local ParryCD = LocalPlayer.PlayerGui.Hotbar.Block.UIGradient
                         if ParryCD.Offset.Y < 0.4 then
@@ -1987,6 +1989,7 @@ function System.autoparry.start()
                                LocalPlayer.Character.Abilities:FindFirstChild("Fracture") and LocalPlayer.Character.Abilities["Fracture"].Enabled or
                                LocalPlayer.Character.Abilities:FindFirstChild("Death Slash") and LocalPlayer.Character.Abilities["Death Slash"].Enabled then
                                 System.__properties.__parried = true
+                                System.__properties.__last_parry_time = current_time
                                 ReplicatedStorage.Remotes.AbilityButtonPress:Fire()
                                 task.wait(2.432)
                                 ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DeathSlashShootActivation"):FireServer(true)
@@ -1995,7 +1998,7 @@ function System.autoparry.start()
                         end
                     end
                     
-                    if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
+                    if ball_target == LocalPlayer.Name and distance <= adjusted_parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
                             System.parry.keypress()
                         else
@@ -5737,23 +5740,117 @@ local swordFXTextbox = SkinChanger:create_textbox({
 
 SkinChanger:create_divider({})
 
+-- Enhanced reset function for consistent parry performance
+function System.detection.reset_all_state()
+    local props = System.detection.__ball_properties
+    
+    -- Reset curve detection state
+    props.__aerodynamic_time = tick()
+    props.__last_warping = tick()
+    props.__lerp_radians = 0
+    props.__curving = tick()
+    
+    -- Clear history for fresh start
+    props.__velocity_history = {}
+    props.__position_history = {}
+    
+    -- Reset curve types
+    for curve_type in pairs(props.__curve_types) do
+        props.__curve_types[curve_type] = false
+    end
+    
+    -- Reset tracking variables
+    props.__last_curve_detection = tick()
+    props.__curve_intensity = 0
+    props.__trajectory_prediction = nil
+    props.__angular_velocity = 0
+    props.__curve_frequency = 0
+    
+    -- Reset parry state
+    System.__properties.__parried = false
+    System.__properties.__antidot_parried = false
+    System.__properties.__parries = 0
+    System.__properties.__first_parry_done = false
+    System.__properties.__tornado_time = 0
+    
+    -- Reset bypass state
+    if DualBypassSystem then
+        DualBypassSystem.__properties.__virtual_input_used = false
+    end
+end
+
+-- Enhanced character respawn/death detection
+LocalPlayer.CharacterAdded:Connect(function(character)
+    -- Wait for character to fully load
+    character.DescendantAdded:Wait()
+    
+    -- Reset all detection state on respawn
+    System.detection.reset_all_state()
+    
+    -- Small delay to ensure proper reset
+    task.wait(0.1)
+    
+    -- Clear any cached balls to force refresh
+    System.__properties.__cached_balls = nil
+end)
+
+-- Enhanced ball spawn/death detection with proper timing
 workspace.ChildRemoved:Connect(function(child)
     if child.Name == 'Balls' then
+        -- Reset all state when balls folder is removed
+        System.detection.reset_all_state()
         System.__properties.__cached_balls = nil
     end
 end)
 
 local balls = workspace:FindFirstChild('Balls')
 if balls then
-    balls.ChildAdded:Connect(function()
+    balls.ChildAdded:Connect(function(ball)
+        -- Immediate reset on new ball spawn
         System.__properties.__parried = false
         System.__properties.__antidot_parried = false
+        
+        -- Clear trajectory prediction for new ball
+        local props = System.detection.__ball_properties
+        props.__trajectory_prediction = nil
+        props.__velocity_history = {}
+        props.__position_history = {}
+        
+        -- Small delay to ensure ball is fully loaded
+        task.wait(0.05)
+        
+        -- Reset curve detection timing
+        props.__last_curve_detection = tick()
+        props.__last_warping = tick()
+        props.__curving = tick()
     end)
     
-    balls.ChildRemoved:Connect(function()
+    balls.ChildRemoved:Connect(function(ball)
+        -- Comprehensive reset on ball removal/death
         System.__properties.__parries = 0
         System.__properties.__parried = false
         System.__properties.__antidot_parried = false
+        System.__properties.__first_parry_done = false
+        
+        -- Clear all tracking data
+        System.detection.reset_all_state()
+        
+        -- Force cache refresh
+        System.__properties.__cached_balls = nil
+        
+        -- Reset bypass state for next ball
+        if DualBypassSystem then
+            DualBypassSystem.__properties.__virtual_input_used = false
+        end
+    end)
+end
+
+-- Enhanced death detection with immediate reset
+if LocalPlayer.Character then
+    LocalPlayer.Character.Humanoid.Died:Connect(function()
+        -- Immediate reset on death
+        System.detection.reset_all_state()
+        System.__properties.__cached_balls = nil
     end)
 end
 
