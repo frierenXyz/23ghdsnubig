@@ -1680,807 +1680,6 @@ function System.auto_spam.stop()
     autoSpamAccumulator = 0
 end
 
-local function create_mobile_button(name, position_y, color)
-    local gui = Instance.new('ScreenGui')
-    gui.Name = 'Sigma' .. name .. 'Mobile'
-    gui.ResetOnSpawn = false
-    gui.IgnoreGuiInset = true
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    
-    local button = Instance.new('TextButton')
-    button.Size = UDim2.new(0, 140, 0, 50)
-    button.Position = UDim2.new(0.5, -70, position_y, 0)
-    button.BackgroundTransparency = 1
-    button.AnchorPoint = Vector2.new(0.5, 0)
-    button.Draggable = true
-    button.AutoButtonColor = false
-    button.ZIndex = 2
-    
-    local bg = Instance.new('Frame')
-    bg.Size = UDim2.new(1, 0, 1, 0)
-    bg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    bg.Parent = button
-    
-    local corner = Instance.new('UICorner')
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = bg
-    
-    local stroke = Instance.new('UIStroke')
-    stroke.Color = color
-    stroke.Thickness = 1
-    stroke.Transparency = 0.3
-    stroke.Parent = bg
-    
-    local text = Instance.new('TextLabel')
-    text.Size = UDim2.new(1, 0, 1, 0)
-    text.BackgroundTransparency = 1
-    text.Text = name
-    text.Font = Enum.Font.GothamBold
-    text.TextSize = 16
-    text.TextColor3 = Color3.fromRGB(255, 255, 255)
-    text.ZIndex = 3
-    text.Parent = button
-    
-    button.Parent = gui
-    gui.Parent = CoreGui
-    
-    return {gui = gui, button = button, text = text, bg = bg}
-end
-
-local function destroy_mobile_gui(gui_data)
-    if gui_data and gui_data.gui then
-        gui_data.gui:Destroy()
-    end
-end
-
-local autoparry_module = rage:create_module({
-    title = 'Auto Parry',
-    flag = 'Auto_Parry',
-    description = 'Automatically parries ball',
-    section = 'left',
-    callback = function(value)
-        System.__properties.__autoparry_enabled = value
-        if value then
-            System.autoparry.start()
-            if getgenv().AutoParryNotify then
-                Library.SendNotification({
-                    title = "Auto Parry",
-                    text = "ON (Triggerbot integrado ativo)",
-                    duration = 3
-                })
-            end
-        else
-            System.autoparry.stop()
-            if getgenv().AutoParryNotify then
-                Library.SendNotification({
-                    title = "Auto Parry",
-                    text = "OFF",
-                    duration = 2
-                })
-            end
-        end
-    end
-})
-
-autoparry_module:create_dropdown({
-    title = "Parry Mode",
-    flag = "autoparry_mode",
-    options = {"Remote", "Keypress"},
-    default = "Remote",
-    multi_dropdown = false,
-    maximum_options = 2,
-    callback = function(value)
-        getgenv().AutoParryMode = value
-    end
-})
-
-local AutoCurveDropdown = autoparry_module:create_dropdown({
-    title = "AutoCurve",
-    flag = "curve_type",
-    options = System.__config.__curve_names,
-    multi_dropdown = false,
-    maximum_options = 6,
-    callback = function(value)
-        for i, name in ipairs(System.__config.__curve_names) do
-            if name == value then
-                System.__properties.__curve_mode = i
-                break
-            end
-        end
-    end
-})
-
-autoparry_module:create_slider({
-    title = 'Parry Accuracy',
-    flag = 'Parry_Accuracy',
-    maximum_value = 100,
-    minimum_value = 1,
-    value = 50,
-    round_number = true,
-    callback = function(value)
-        System.__properties.__accuracy = value
-        update_divisor()
-    end
-})
-
-autoparry_module:create_checkbox({
-    title = "Play Animation",
-    flag = "Play_Animation",
-    callback = function(value)
-        System.__properties.__play_animation = value
-    end
-})
-
-autoparry_module:create_divider({})
-
-autoparry_module:create_checkbox({
-    title = "Notify",
-    flag = "Auto_Parry_Notify",
-    callback = function(value)
-        getgenv().AutoParryNotify = value
-    end
-})
-
-autoparry_module:create_checkbox({
-    title = "Cooldown Protection",
-    flag = "CooldownProtection",
-    callback = function(value)
-        getgenv().CooldownProtection = value
-    end
-})
-
-autoparry_module:create_checkbox({
-    title = "Auto Ability",
-    flag = "AutoAbility",
-    callback = function(value)
-        getgenv().AutoAbility = value
-    end
-})
-
-local function create_curve_selector_mobile()
-    local gui = Instance.new('ScreenGui')
-    gui.Name = 'SigmaCurveSelectorMobile'
-    gui.ResetOnSpawn = false
-    gui.IgnoreGuiInset = true
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    
-    local main_frame = Instance.new('Frame')
-    main_frame.Size = UDim2.new(0, 140, 0, 40)
-    main_frame.Position = UDim2.new(0.5, -70, 0.12, 0)
-    main_frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    main_frame.BorderSizePixel = 0
-    main_frame.AnchorPoint = Vector2.new(0.5, 0)
-    main_frame.ZIndex = 5
-    main_frame.Parent = gui
-    
-    local main_corner = Instance.new('UICorner')
-    main_corner.CornerRadius = UDim.new(0, 8)
-    main_corner.Parent = main_frame
-    
-    local main_stroke = Instance.new('UIStroke')
-    main_stroke.Color = Color3.fromRGB(60, 60, 60)
-    main_stroke.Thickness = 1
-    main_stroke.Parent = main_frame
-
-    local header = Instance.new('Frame')
-    header.Size = UDim2.new(1, 0, 0, 40)
-    header.BackgroundTransparency = 1
-    header.ZIndex = 6
-    header.Parent = main_frame
-    
-    local header_text = Instance.new('TextLabel')
-    header_text.Size = UDim2.new(1, -35, 1, 0)
-    header_text.Position = UDim2.new(0, 12, 0, 0)
-    header_text.BackgroundTransparency = 1
-    header_text.Text = "CURVE"
-    header_text.Font = Enum.Font.Gotham
-    header_text.TextSize = 11
-    header_text.TextColor3 = Color3.fromRGB(180, 180, 180)
-    header_text.TextXAlignment = Enum.TextXAlignment.Left
-    header_text.ZIndex = 7
-    header_text.Parent = header
-
-    local toggle_btn = Instance.new('TextButton')
-    toggle_btn.Size = UDim2.new(0, 24, 0, 24)
-    toggle_btn.Position = UDim2.new(1, -32, 0.5, -12)
-    toggle_btn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    toggle_btn.Text = "−"
-    toggle_btn.Font = Enum.Font.GothamBold
-    toggle_btn.TextSize = 14
-    toggle_btn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    toggle_btn.AutoButtonColor = false
-    toggle_btn.ZIndex = 7
-    toggle_btn.Parent = header
-    
-    local toggle_corner = Instance.new('UICorner')
-    toggle_corner.CornerRadius = UDim.new(0, 4)
-    toggle_corner.Parent = toggle_btn
-    
-    local toggle_stroke = Instance.new('UIStroke')
-    toggle_stroke.Color = Color3.fromRGB(50, 50, 50)
-    toggle_stroke.Thickness = 1
-    toggle_stroke.Parent = toggle_btn
-
-    local buttons_container = Instance.new('Frame')
-    buttons_container.Size = UDim2.new(1, -16, 0, 0)
-    buttons_container.Position = UDim2.new(0, 8, 0, 48)
-    buttons_container.BackgroundTransparency = 1
-    buttons_container.ClipsDescendants = true
-    buttons_container.ZIndex = 6
-    buttons_container.Parent = main_frame
-    
-    local list_layout = Instance.new('UIListLayout')
-    list_layout.Padding = UDim.new(0, 4)
-    list_layout.FillDirection = Enum.FillDirection.Vertical
-    list_layout.SortOrder = Enum.SortOrder.LayoutOrder
-    list_layout.Parent = buttons_container
-    
-    local CURVE_TYPES = {
-        {name = "Camera"},
-        {name = "Random"},
-        {name = "Accelerated"},
-        {name = "Backwards"},
-        {name = "Slow"},
-        {name = "High"}
-    }
-    
-    local buttons = {}
-    local current_selected = nil
-    
-    for i, curve_data in ipairs(CURVE_TYPES) do
-        local btn_container = Instance.new('Frame')
-        btn_container.Size = UDim2.new(1, 0, 0, 32)
-        btn_container.BackgroundTransparency = 1
-        btn_container.ZIndex = 7
-        btn_container.LayoutOrder = i
-        btn_container.Parent = buttons_container
-        
-        local btn = Instance.new('TextButton')
-        btn.Size = UDim2.new(1, 0, 1, 0)
-        btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        btn.Text = ""
-        btn.AutoButtonColor = false
-        btn.ZIndex = 8
-        btn.Parent = btn_container
-        
-        local btn_corner = Instance.new('UICorner')
-        btn_corner.CornerRadius = UDim.new(0, 6)
-        btn_corner.Parent = btn
-        
-        local btn_stroke = Instance.new('UIStroke')
-        btn_stroke.Color = Color3.fromRGB(45, 45, 45)
-        btn_stroke.Thickness = 1
-        btn_stroke.Parent = btn
-
-        local indicator = Instance.new('Frame')
-        indicator.Size = UDim2.new(0, 3, 0, 20)
-        indicator.Position = UDim2.new(0, 6, 0.5, -10)
-        indicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        indicator.BorderSizePixel = 0
-        indicator.Visible = false
-        indicator.ZIndex = 10
-        indicator.Parent = btn
-        
-        local indicator_corner = Instance.new('UICorner')
-        indicator_corner.CornerRadius = UDim.new(1, 0)
-        indicator_corner.Parent = indicator
-        
-        local btn_text = Instance.new('TextLabel')
-        btn_text.Size = UDim2.new(1, -20, 1, 0)
-        btn_text.Position = UDim2.new(0, 16, 0, 0)
-        btn_text.BackgroundTransparency = 1
-        btn_text.Text = curve_data.name
-        btn_text.Font = Enum.Font.Gotham
-        btn_text.TextSize = 11
-        btn_text.TextColor3 = Color3.fromRGB(150, 150, 150)
-        btn_text.TextXAlignment = Enum.TextXAlignment.Left
-        btn_text.ZIndex = 9
-        btn_text.Parent = btn
-        
-        buttons[i] = {
-            button = btn, 
-            stroke = btn_stroke, 
-            text = btn_text,
-            indicator = indicator,
-            container = btn_container
-        }
-        
-        local touch_start = 0
-        local was_dragged = false
-        
-        btn.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.Touch then
-                touch_start = tick()
-                was_dragged = false
-            end
-        end)
-        
-        btn.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.Touch then
-                if (tick() - touch_start) > 0.1 then
-                    was_dragged = true
-                end
-            end
-        end)
-        
-        btn.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.Touch and not was_dragged then
-
-                for idx, name in ipairs(System.__config.__curve_names) do
-                    if name == curve_data.name then
-                        System.__properties.__curve_mode = idx
-                        AutoCurveDropdown:update(curve_data.name)
-                        break
-                    end
-                end
-
-                if current_selected then
-                    game:GetService("TweenService"):Create(current_selected.button, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-                        BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-                    }):Play()
-                    game:GetService("TweenService"):Create(current_selected.text, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-                        TextColor3 = Color3.fromRGB(150, 150, 150)
-                    }):Play()
-                    game:GetService("TweenService"):Create(current_selected.stroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-                        Color = Color3.fromRGB(45, 45, 45)
-                    }):Play()
-                    current_selected.indicator.Visible = false
-                end
-
-                game:GetService("TweenService"):Create(btn, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-                    BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-                }):Play()
-                game:GetService("TweenService"):Create(btn_text, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-                    TextColor3 = Color3.fromRGB(255, 255, 255)
-                }):Play()
-                game:GetService("TweenService"):Create(btn_stroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
-                    Color = Color3.fromRGB(255, 255, 255)
-                }):Play()
-                indicator.Visible = true
-                
-                current_selected = buttons[i]
-                
-                if getgenv().AutoCurveHotkeyNotify then
-                    Library.SendNotification({
-                        title = "AutoCurve",
-                        text = curve_data.name,
-                        duration = 2
-                    })
-                end
-            end
-        end)
-    end
-
-    local is_expanded = true
-    local expanded_height = 48 + (#CURVE_TYPES * 32) + ((#CURVE_TYPES - 1) * 4) + 12
-    local minimized_height = 40
-    
-    buttons_container.Size = UDim2.new(1, -16, 0, (#CURVE_TYPES * 32) + ((#CURVE_TYPES - 1) * 4))
-    main_frame.Size = UDim2.new(0, 140, 0, expanded_height)
-    
-    toggle_btn.MouseButton1Click:Connect(function()
-        is_expanded = not is_expanded
-        toggle_btn.Text = is_expanded and "−" or "+"
-        
-        game:GetService("TweenService"):Create(main_frame, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Size = UDim2.new(0, 140, 0, is_expanded and expanded_height or minimized_height)
-        }):Play()
-        
-        game:GetService("TweenService"):Create(buttons_container, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-            Size = UDim2.new(1, -16, 0, is_expanded and (#CURVE_TYPES * 32) + ((#CURVE_TYPES - 1) * 4) or 0)
-        }):Play()
-    end)
-
-    local drag_start = nil
-    local start_pos = nil
-    local is_dragging = false
-    
-    header.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            drag_start = input.Position
-            start_pos = main_frame.Position
-            is_dragging = true
-        end
-    end)
-    
-    header.InputChanged:Connect(function(input)
-        if is_dragging and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
-            local delta = input.Position - drag_start
-            main_frame.Position = UDim2.new(
-                start_pos.X.Scale,
-                start_pos.X.Offset + delta.X,
-                start_pos.Y.Scale,
-                start_pos.Y.Offset + delta.Y
-            )
-        end
-    end)
-    
-    header.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            is_dragging = false
-        end
-    end)
-    
-    gui.Parent = CoreGui
-    
-    return {gui = gui, main_frame = main_frame, buttons = buttons}
-end
-
-local CURVE_TYPES = {
-    {key = Enum.KeyCode.One, name = "Camera"},
-    {key = Enum.KeyCode.Two, name = "Random"},
-    {key = Enum.KeyCode.Three, name = "Accelerated"},
-    {key = Enum.KeyCode.Four, name = "Backwards"},
-    {key = Enum.KeyCode.Five, name = "Slow"},
-    {key = Enum.KeyCode.Six, name = "High"}
-}
-
-local function updateCurveType(newType)
-    for i, name in ipairs(System.__config.__curve_names) do
-        if name == newType then
-            System.__properties.__curve_mode = i
-            AutoCurveDropdown:update(newType)
-            break
-        end
-    end
-    
-    if getgenv().AutoCurveHotkeyNotify then
-        Library.SendNotification({
-            title = "AutoCurve",
-            text = newType,
-            duration = 2
-        })
-    end
-end
-
-local hotkeyModule = rage:create_module({
-    title = "AutoCurve Hotkey" .. (System.__properties.__is_mobile and "(Mobile)" or "(PC)"),
-    description = "Press 1-6 to change curve",
-    flag = "autocurve_hotkey",
-    section = "left",
-    callback = function(state)
-        getgenv().AutoCurveHotkeyEnabled = state
-        
-        if System.__properties.__is_mobile then
-            if state then
-                if not System.__properties.__mobile_guis.curve_selector then
-                    local curve_selector = create_curve_selector_mobile()
-                    System.__properties.__mobile_guis.curve_selector = curve_selector
-                end
-            else
-                destroy_mobile_gui(System.__properties.__mobile_guis.curve_selector)
-                System.__properties.__mobile_guis.curve_selector = nil
-            end
-        end
-    end
-})
-
-hotkeyModule:create_checkbox({
-    title = "Notify",
-    flag = "AutoCurveHotkeyNotify",
-    callback = function(value)
-        getgenv().AutoCurveHotkeyNotify = value
-    end
-})
-
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed or not getgenv().AutoCurveHotkeyEnabled or System.__properties.__is_mobile then return end
-    
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        for _, curveData in ipairs(CURVE_TYPES) do
-            if input.KeyCode == curveData.key then
-                updateCurveType(curveData.name)
-                break
-            end
-        end
-    end
-end)
-
-detectionstab:create_module({
-    title = 'Infinity Detection',
-    flag = 'Infinity',
-    description = '',
-    section = 'left',
-    callback = function(value)
-        System.__config.__detections.__infinity = value
-    end
-})
-
-detectionstab:create_module({
-    title = 'Death Slash Detection',
-    flag = 'Death_Slash',
-    description = '',
-    section = 'right',
-    callback = function(value)
-        System.__config.__detections.__deathslash = value
-    end
-})
-
-detectionstab:create_module({
-    title = 'Time Hole Detection',
-    flag = 'Time_Hole',
-    description = '',
-    section = 'left',
-    callback = function(value)
-        System.__config.__detections.__timehole = value
-    end
-})
-
-local AntiPhantom = {
-    Enabled = false,
-    CurrentBall = nil,
-    FocusConnection = nil
-}
-
-function AntiPhantom:HandleTransmission(Object)
-    if not self.Enabled then return end
-    
-    if Object.Name == "maxTransmission" or Object.Name == "transmissionpart" then
-        local Weld = Object:FindFirstChildWhichIsA("WeldConstraint")
-        if Weld then
-            local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-            if Character and Weld.Part1 == Character.HumanoidRootPart then
-                self.CurrentBall = System.ball.get()
-                Weld:Destroy()
-                
-                if self.CurrentBall then
-                    self:InstantParry()
-                end
-            end
-        end
-    end
-end
-
-function AntiPhantom:InstantParry()
-    if not self.CurrentBall or not self.Enabled then return end
-    
-    ReplicatedStorage.Remotes.AbilityButtonPress:Fire()
-    System.__properties.__parried = true
-    
-    if System.parry and System.parry.execute_action then
-        System.parry.execute_action()
-    end
-    
-    task.delay(1, function()
-        System.__properties.__parried = false
-    end)
-    
-    self.CurrentBall = nil
-    
-    if self.FocusConnection then
-        self.FocusConnection:Disconnect()
-        self.FocusConnection = nil
-    end
-end
-
-function AntiPhantom:Cleanup()
-    if self.FocusConnection then
-        self.FocusConnection:Disconnect()
-        self.FocusConnection = nil
-    end
-    self.CurrentBall = nil
-end
-
-function AntiPhantom:Toggle(state)
-    self.Enabled = state
-    System.__config.__detections.__phantom = state
-    
-    if state then
-        if getgenv().AntiPhantomNotify then
-            Library.SendNotification({
-                title = "Anti-Phantom",
-                text = "ON - INSTANT",
-                duration = 2
-            })
-        end
-    else
-        self:Cleanup()
-        if getgenv().AntiPhantomNotify then
-            Library.SendNotification({
-                title = "Anti-Phantom",
-                text = "OFF",
-                duration = 2
-            })
-        end
-    end
-end
-
-Runtime.ChildAdded:Connect(function(Object)
-    AntiPhantom:HandleTransmission(Object)
-end)
-
-local phantom_module = detectionstab:create_module({
-    title = 'Anti-Phantom ',
-    flag = 'Anti_Phantom',
-    description = 'Counter Phantom ',
-    section = 'left',
-    callback = function(value)
-        AntiPhantom:Toggle(value)
-    end
-})
-
-local manual_spam_module = set:create_module({
-    title = "Manual Spam",
-    description = "spam manual",
-    flag = "manualspam",
-    section = "left",
-    callback = function(state)
-        if System.__properties.__is_mobile then
-            if state then
-                if not System.__properties.__mobile_guis.manual_spam then
-                    local manual_spam_mobile = create_mobile_button('Spam', 0.8, Color3.fromRGB(255, 255, 255))
-                    System.__properties.__mobile_guis.manual_spam = manual_spam_mobile
-                    
-                    local manual_touch_start = 0
-                    local manual_was_dragged = false
-                    
-                    manual_spam_mobile.button.InputBegan:Connect(function(input)
-                        if input.UserInputType == Enum.UserInputType.Touch then
-                            manual_touch_start = tick()
-                            manual_was_dragged = false
-                        end
-                    end)
-                    
-                    manual_spam_mobile.button.InputChanged:Connect(function(input)
-                        if input.UserInputType == Enum.UserInputType.Touch then
-                            if (tick() - manual_touch_start) > 0.1 then
-                                manual_was_dragged = true
-                            end
-                        end
-                    end)
-                    
-                    manual_spam_mobile.button.InputEnded:Connect(function(input)
-                        if input.UserInputType == Enum.UserInputType.Touch and not manual_was_dragged then
-                            System.__properties.__manual_spam_enabled = not System.__properties.__manual_spam_enabled
-                            
-                            if System.__properties.__manual_spam_enabled then
-                                System.manual_spam.start()
-                                manual_spam_mobile.text.Text = "ON"
-                                manual_spam_mobile.text.TextColor3 = Color3.fromRGB(0, 255, 100)
-                            else
-                                System.manual_spam.stop()
-                                manual_spam_mobile.text.Text = "Spam"
-                                manual_spam_mobile.text.TextColor3 = Color3.fromRGB(255, 255, 255)
-                            end
-                            
-                            if getgenv().ManualSpamNotify then
-                                Library.SendNotification({
-                                    title = "ManualSpam",
-                                    text = System.__properties.__manual_spam_enabled and "ON (100K CPS)" or "OFF",
-                                    duration = 2
-                                })
-                            end
-                        end
-                    end)
-                end
-            else
-                System.__properties.__manual_spam_enabled = false
-                System.manual_spam.stop()
-                destroy_mobile_gui(System.__properties.__mobile_guis.manual_spam)
-                System.__properties.__mobile_guis.manual_spam = nil
-            end
-        else
-            System.__properties.__manual_spam_enabled = state
-            if state then
-                System.manual_spam.start()
-                if getgenv().ManualSpamNotify then
-                    Library.SendNotification({
-                        title = "Manual Spam",
-                        text = "ON (100K CPS)",
-                        duration = 2
-                    })
-                end
-            else
-                System.manual_spam.stop()
-                if getgenv().ManualSpamNotify then
-                    Library.SendNotification({
-                        title = "Manual Spam",
-                        text = "OFF",
-                        duration = 2
-                    })
-                end
-            end
-        end
-    end
-})
-
-manual_spam_module:create_checkbox({
-    title = "Notify",
-    flag = "ManualSpamNotify",
-    callback = function(value)
-        getgenv().ManualSpamNotify = value
-    end
-})
-
-manual_spam_module:create_dropdown({
-    title = "Mode",
-    flag = "manualspam_mode",
-    options = {"Remote", "Keypress"},
-    default = "Remote",
-    multi_dropdown = false,
-    maximum_options = 2,
-    callback = function(value)
-        getgenv().ManualSpamMode = value
-    end
-})
-
-manual_spam_module:create_checkbox({
-    title = "Animation Fix",
-    flag = "ManualSpamAnimationFix",
-    callback = function(value)
-        getgenv().ManualSpamAnimationFix = value
-    end
-})
-
-local auto_spam_module = set:create_module({
-    title = 'Auto Spam',
-    flag = 'Auto_Spam_Parry',
-    description = 'Automatically spam parries ball ',
-    section = 'right',
-    callback = function(value)
-        System.__properties.__auto_spam_enabled = value
-        if value then
-            System.auto_spam.start()
-            if getgenv().AutoSpamNotify then
-                Library.SendNotification({
-                    title = "Auto Spam",
-                    text = "ON (100K CPS)",
-                    duration = 2
-                })
-            end
-        else
-            System.auto_spam.stop()
-            if getgenv().AutoSpamNotify then
-                Library.SendNotification({
-                    title = "Auto Spam",
-                    text = "OFF",
-                    duration = 2
-                })
-            end
-        end
-    end
-})
-
-auto_spam_module:create_checkbox({
-    title = "Notify",
-    flag = "Auto_Spam_Notify",
-    callback = function(value)
-        getgenv().AutoSpamNotify = value
-    end
-})
-
-auto_spam_module:create_dropdown({
-    title = "Mode",
-    flag = "autospam_mode",
-    options = {"Remote", "Keypress"},
-    default = "Remote",
-    multi_dropdown = false,
-    maximum_options = 2,
-    callback = function(value)
-        getgenv().AutoSpamMode = value
-    end
-})
-
-auto_spam_module:create_checkbox({
-    title = "Animation Fix",
-    flag = "AutoSpamAnimationFix",
-    callback = function(value)
-        getgenv().AutoSpamAnimationFix = value
-    end
-})
-
-auto_spam_module:create_slider({
-    title = "Parry Threshold",
-    flag = "Parry_Threshold",
-    maximum_value = 5,
-    minimum_value = 1,
-    value = 2.5,
-    round_number = false,
-    callback = function(value)
-        System.__properties.__spam_threshold = value
-    end
-})
-
 local __players = cloneref(game:GetService('Players'))
 local __localplayer = __players.LocalPlayer
 
@@ -5098,13 +4297,283 @@ if balls then
         
         -- Reset detection properties
         System.detection.__ball_properties.__last_warping = tick()
-        System.detection.__ball_properties.__curving = tick()
-        System.detection.__ball_properties.__lerp_radians = 0
+
+    table.insert(clashConnections, getconnections(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent)[1])
+
+    getgenv().updateSword = function()
+        if getgenv().changeSwordFX then
+            getgenv().slashName = getSlashName(getgenv().swordFX)
+        end
+        setSword()
+    end
+
+    task.spawn(function()
+        while task.wait(1) do
+            if getgenv().skinChangerEnabled and getgenv().changeSwordModel then
+                local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                if LocalPlayer:GetAttribute("CurrentlyEquippedSword") ~= getgenv().swordModel then
+                    setSword()
+                end
+                if char and (not char:FindFirstChild(getgenv().swordModel)) then
+                    setSword()
+                end
+                for _,v in (char and char:GetChildren()) or {} do
+                    if v:IsA("Model") and v.Name ~= getgenv().swordModel then
+                        v:Destroy()
+                    end
+                    task.wait()
+                end
+            end
+        end
     end)
-end
 
-main:load()
+    local SkinChanger = misc:create_module({
+        title = 'Skin Changer',
+        flag = 'SkinChanger',
+        description = 'Skin Changer',
+        section = 'left',
+        callback = function(value: boolean)
+            getgenv().skinChangerEnabled = value
+            if value then
+                getgenv().updateSword()
+            end
+        end
+    })
 
-local StarterGui = game:GetService('StarterGui')
--- INICIAR O DUAL BYPASS AUTOMATICAMENTE
-StarterGui:SetTopbarTransparency(1)
+    SkinChanger:create_divider({})
+
+    SkinChanger:change_state(false)
+
+    local changeSwordModelCheckbox = SkinChanger:create_checkbox({
+        title = "Change Sword Model",
+        flag = "ChangeSwordModel",
+        callback = function(value: boolean)
+            getgenv().changeSwordModel = value
+            if getgenv().skinChangerEnabled then
+                getgenv().updateSword()
+            end
+        end
+    })
+
+    changeSwordModelCheckbox:change_state(true)
+
+    local swordModelTextbox = SkinChanger:create_textbox({
+        title = "￬ Sword Model Name ￬",
+        placeholder = "Enter Sword Model Name...",
+        flag = "SwordModelTextbox",
+        callback = function(text)
+            getgenv().swordModel = text
+            if getgenv().skinChangerEnabled and getgenv().changeSwordModel then
+                getgenv().updateSword()
+            end
+        end
+    })
+
+    SkinChanger:create_divider({})
+
+    local changeSwordAnimationCheckbox = SkinChanger:create_checkbox({
+        title = "Change Sword Animation",
+        flag = "ChangeSwordAnimation",
+        callback = function(value: boolean)
+            getgenv().changeSwordAnimation = value
+            if getgenv().skinChangerEnabled then
+                getgenv().updateSword()
+            end
+        end
+    })
+
+    changeSwordAnimationCheckbox:change_state(true)
+
+    local swordAnimationTextbox = SkinChanger:create_textbox({
+        title = "￬ Sword Animation Name ￬",
+        placeholder = "Enter Sword Animation Name...",
+        flag = "SwordAnimationTextbox",
+        callback = function(text)
+            getgenv().swordAnimations = text
+            if getgenv().skinChangerEnabled and getgenv().changeSwordAnimation then
+                getgenv().updateSword()
+            end
+        end
+    })
+
+    SkinChanger:create_divider({})
+
+    local changeSwordFXCheckbox = SkinChanger:create_checkbox({
+        title = "Change Sword FX",
+        flag = "ChangeSwordFX",
+        callback = function(value: boolean)
+            getgenv().changeSwordFX = value
+            if getgenv().skinChangerEnabled then
+                getgenv().updateSword()
+            end
+        end
+    })
+
+    changeSwordFXCheckbox:change_state(true)
+
+    local swordFXTextbox = SkinChanger:create_textbox({
+        title = "￬ Sword FX Name ￬",
+        placeholder = "Enter Sword FX Name...",
+        flag = "SwordFXTextbox",
+        callback = function(text)
+            getgenv().swordFX = text
+            if getgenv().skinChangerEnabled and getgenv().changeSwordFX then
+                getgenv().updateSword()
+            end
+        end
+    })
+
+    SkinChanger:create_divider({})
+
+    local autoparry_module = rage:create_module({
+        title = 'Auto Parry',
+        flag = 'Auto_Parry',
+        description = 'Automatically parries ball',
+        section = 'left',
+        callback = function(value)
+            System.__properties.__autoparry_enabled = value
+            if value then
+                System.autoparry.start()
+                if getgenv().AutoParryNotify then
+                    Library.SendNotification({
+                        title = "Auto Parry",
+                        text = "ON (Triggerbot integrado ativo)",
+                        duration = 3
+                    })
+                end
+            else
+                System.autoparry.stop()
+                if getgenv().AutoParryNotify then
+                    Library.SendNotification({
+                        title = "Auto Parry",
+                        text = "OFF",
+                        duration = 2
+                    })
+                end
+            end
+        end
+    })
+
+    autoparry_module:create_dropdown({
+        title = "Parry Mode",
+        flag = "autoparry_mode",
+        options = {"Remote", "Keypress"},
+        default = "Remote",
+        multi_dropdown = false,
+        maximum_options = 2,
+        callback = function(value)
+            getgenv().AutoParryMode = value
+        end
+    })
+
+    local AutoCurveDropdown = autoparry_module:create_dropdown({
+        title = "AutoCurve",
+        flag = "curve_type",
+        options = System.__config.__curve_names,
+        multi_dropdown = false,
+        maximum_options = 6,
+        callback = function(value)
+            for i, name in ipairs(System.__config.__curve_names) do
+                if name == value then
+                    System.__properties.__curve_mode = i
+                    break
+                end
+            end
+        end
+    })
+
+    autoparry_module:create_slider({
+        title = 'Parry Accuracy',
+        flag = 'Parry_Accuracy',
+        maximum_value = 100,
+        minimum_value = 1,
+        value = 50,
+        round_number = true,
+        callback = function(value)
+            System.__properties.__accuracy = value
+            update_divisor()
+        end
+    })
+
+    autoparry_module:create_checkbox({
+        title = "Play Animation",
+        flag = "Play_Animation",
+        callback = function(value)
+            System.__properties.__play_animation = value
+        end
+    })
+
+    autoparry_module:create_divider({})
+
+    autoparry_module:create_checkbox({
+        title = "Notify",
+        flag = "Auto_Parry_Notify",
+        callback = function(value)
+            getgenv().AutoParryNotify = value
+        end
+    })
+
+    autoparry_module:create_checkbox({
+        title = "Cooldown Protection",
+        flag = "CooldownProtection",
+        callback = function(value)
+            getgenv().CooldownProtection = value
+        end
+    })
+
+    autoparry_module:create_checkbox({
+        title = "Auto Ability",
+        flag = "AutoAbility",
+        callback = function(value)
+            getgenv().AutoAbility = value
+        end
+    })
+
+    workspace.ChildRemoved:Connect(function(child)
+        if child.Name == 'Balls' then
+            System.__properties.__cached_balls = nil
+        end
+    end)
+
+    local balls = workspace:FindFirstChild('Balls')
+    if balls then
+        balls.ChildAdded:Connect(function(child)
+            -- Enhanced reset system for ball spawn
+            System.__properties.__parried = false
+            System.__properties.__antidot_parried = false
+            System.__properties.__spam_target = nil
+            System.__properties.__spam_target_time = 0
+            System.__properties.__parries = 0
+            TriggerbotParried = false
+            System.__properties.__triggerbot_parried = false
+            System.__properties.__last_kill_time = 0
+            
+            -- Reset detection properties
+            System.detection.__ball_properties.__last_warping = tick()
+            System.detection.__ball_properties.__curving = tick()
+            System.detection.__ball_properties.__lerp_radians = 0
+        end)
+        
+        balls.ChildRemoved:Connect(function()
+            -- Enhanced reset system for ball removal
+            System.__properties.__parries = 0
+            System.__properties.__parried = false
+            System.__properties.__antidot_parried = false
+            System.__properties.__spam_target = nil
+            System.__properties.__spam_target_time = 0
+            TriggerbotParried = false
+            System.__properties.__triggerbot_parried = false
+            System.__properties.__last_kill_time = 0
+            
+            -- Reset detection properties
+            System.detection.__ball_properties.__last_warping = tick()
+            System.detection.__ball_properties.__curving = tick()
+            System.detection.__ball_properties.__lerp_radians = 0
+        end)
+    end
+
+    main:load()
+
+    local StarterGui = game:GetService('StarterGui')
+    -- INICIAR O DUAL BYPASS AUTOMATICAMENTE
+    StarterGui:SetTopbarTransparency(1)
