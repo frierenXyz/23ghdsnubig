@@ -4835,162 +4835,167 @@ end
 -- Initialize FFlag Manager
 FFlagManager.applyProfile("Default")
 
--- FFLAG MANAGER MODULE
-local fflagModule = misc:create_module({
-    title = 'FFlag Manager',
-    flag = 'FFlag_Manager',
-    description = 'Manage FFlag profiles and settings',
-    section = 'left',
-    callback = function(value)
-        -- Module toggle functionality
-    end
-})
+-- Move UI modules here after main UI is loaded
+task.spawn(function()
+    task.wait(1) -- Wait for UI to be ready
+    
+    -- FFLAG MANAGER MODULE
+    local fflagModule = misc:create_module({
+        title = 'FFlag Manager',
+        flag = 'FFlag_Manager',
+        description = 'Manage FFlag profiles and settings',
+        section = 'left',
+        callback = function(value)
+            -- Module toggle functionality
+        end
+    })
 
-local profileOptions = {"Default", "Performance", "LagBall", "Network"}
+    local profileOptions = {"Default", "Performance", "LagBall", "Network"}
 
-fflagModule:create_dropdown({
-    title = "FFlag Profile",
-    flag = "fflag_profile",
-    options = profileOptions,
-    default = "Default",
-    callback = function(value)
-        local success = FFlagManager.applyProfile(value)
-        Library.SendNotification({
-            title = "FFlag Manager",
-            text = success and ("Applied " .. value) or ("Failed to apply " .. value),
-            duration = 3
-        })
-    end
-})
+    fflagModule:create_dropdown({
+        title = "FFlag Profile",
+        flag = "fflag_profile",
+        options = profileOptions,
+        default = "Default",
+        callback = function(value)
+            local success = FFlagManager.applyProfile(value)
+            Library.SendNotification({
+                title = "FFlag Manager",
+                text = success and ("Applied " .. value) or ("Failed to apply " .. value),
+                duration = 3
+            })
+        end
+    })
 
-fflagModule:create_button({
-    title = "Apply Profile",
-    flag = "apply_fflag_profile",
-    callback = function()
-        local currentProfile = FFlagManager.getCurrentProfile()
-        local success = FFlagManager.applyProfile(currentProfile)
-        Library.SendNotification({
-            title = "FFlag Manager",
-            text = success and ("Re-applied " .. currentProfile) or ("Failed to re-apply " .. currentProfile),
-            duration = 3
-        })
-    end
-})
+    fflagModule:create_button({
+        title = "Apply Profile",
+        flag = "apply_fflag_profile",
+        callback = function()
+            local currentProfile = FFlagManager.getCurrentProfile()
+            local success = FFlagManager.applyProfile(currentProfile)
+            Library.SendNotification({
+                title = "FFlag Manager",
+                text = success and ("Re-applied " .. currentProfile) or ("Failed to re-apply " .. currentProfile),
+                duration = 3
+            })
+        end
+    })
 
-fflagModule:create_textbox({
-    title = "Custom FFlag",
-    placeholder = "FlagName=Value",
-    flag = "custom_fflag",
-    callback = function(text)
-        if text and text:find("=") then
-            local flagName, value = text:match("([^=]+)=([^=]+)")
-            if flagName and value then
-                local success = FFlagManager.addCustomFlag(flagName, value)
-                Library.SendNotification({
-                    title = "FFlag Manager",
-                    text = success and ("Added " .. flagName) or ("Failed to add " .. flagName),
-                    duration = 3
-                })
+    fflagModule:create_textbox({
+        title = "Custom FFlag",
+        placeholder = "FlagName=Value",
+        flag = "custom_fflag",
+        callback = function(text)
+            if text and text:find("=") then
+                local flagName, value = text:match("([^=]+)=([^=]+)")
+                if flagName and value then
+                    local success = FFlagManager.addCustomFlag(flagName, value)
+                    Library.SendNotification({
+                        title = "FFlag Manager",
+                        text = success and ("Added " .. flagName) or ("Failed to add " .. flagName),
+                        duration = 3
+                    })
+                end
             end
         end
-    end
-})
+    })
 
--- ENHANCED PARRY MODULE
-local enhancedParryModule = misc:create_module({
-    title = 'Enhanced Parry',
-    flag = 'Enhanced_Parry',
-    description = 'Advanced parry prediction and tracking',
-    section = 'right',
-    callback = function(value)
-        EnhancedParrySystem.__properties.__parry_prediction_enabled = value
-        Library.SendNotification({
-            title = "Enhanced Parry",
-            text = value and "ON" or "OFF",
-            duration = 2
-        })
-    end
-})
+    -- ENHANCED PARRY MODULE
+    local enhancedParryModule = misc:create_module({
+        title = 'Enhanced Parry',
+        flag = 'Enhanced_Parry',
+        description = 'Advanced parry prediction and tracking',
+        section = 'right',
+        callback = function(value)
+            EnhancedParrySystem.__properties.__parry_prediction_enabled = value
+            Library.SendNotification({
+                title = "Enhanced Parry",
+                text = value and "ON" or "OFF",
+                duration = 2
+            })
+        end
+    })
 
-enhancedParryModule:create_checkbox({
-    title = "Ball Tracking",
-    flag = "ball_tracking",
-    callback = function(value)
-        EnhancedParrySystem.__properties.__ball_tracking_enabled = value
-    end
-})
+    enhancedParryModule:create_checkbox({
+        title = "Ball Tracking",
+        flag = "ball_tracking",
+        callback = function(value)
+            EnhancedParrySystem.__properties.__ball_tracking_enabled = value
+        end
+    })
 
-enhancedParryModule:create_checkbox({
-    title = "Perfect Timing",
-    flag = "perfect_timing",
-    callback = function(value)
-        EnhancedParrySystem.__properties.__perfect_timing_enabled = value
-    end
-})
+    enhancedParryModule:create_checkbox({
+        title = "Perfect Timing",
+        flag = "perfect_timing",
+        callback = function(value)
+            EnhancedParrySystem.__properties.__perfect_timing_enabled = value
+        end
+    })
 
-enhancedParryModule:create_checkbox({
-    title = "Anti-Lag Compensation",
-    flag = "anti_lag_compensation",
-    callback = function(value)
-        EnhancedParrySystem.__properties.__anti_lag_compensation = value
-    end
-})
+    enhancedParryModule:create_checkbox({
+        title = "Anti-Lag Compensation",
+        flag = "anti_lag_compensation",
+        callback = function(value)
+            EnhancedParrySystem.__properties.__anti_lag_compensation = value
+        end
+    })
 
-enhancedParryModule:create_checkbox({
-    title = "Network Optimizer",
-    flag = "network_optimizer",
-    callback = function(value)
-        EnhancedParrySystem.__properties.__network_optimizer = value
-    end
-})
+    enhancedParryModule:create_checkbox({
+        title = "Network Optimizer",
+        flag = "network_optimizer",
+        callback = function(value)
+            EnhancedParrySystem.__properties.__network_optimizer = value
+        end
+    })
 
-enhancedParryModule:create_slider({
-    title = "Prediction Accuracy",
-    flag = "prediction_accuracy",
-    minimum_value = 0.5,
-    maximum_value = 1.0,
-    value = 0.95,
-    round_number = false,
-    callback = function(value)
-        EnhancedParrySystem.__properties.__prediction_accuracy = value
-    end
-})
+    enhancedParryModule:create_slider({
+        title = "Prediction Accuracy",
+        flag = "prediction_accuracy",
+        minimum_value = 0.5,
+        maximum_value = 1.0,
+        value = 0.95,
+        round_number = false,
+        callback = function(value)
+            EnhancedParrySystem.__properties.__prediction_accuracy = value
+        end
+    })
 
-enhancedParryModule:create_slider({
-    title = "Reaction Time",
-    flag = "reaction_time",
-    minimum_value = 0.05,
-    maximum_value = 0.5,
-    value = 0.1,
-    round_number = false,
-    callback = function(value)
-        EnhancedParrySystem.__properties.__reaction_time = value
-    end
-})
+    enhancedParryModule:create_slider({
+        title = "Reaction Time",
+        flag = "reaction_time",
+        minimum_value = 0.05,
+        maximum_value = 0.5,
+        value = 0.1,
+        round_number = false,
+        callback = function(value)
+            EnhancedParrySystem.__properties.__reaction_time = value
+        end
+    })
 
-enhancedParryModule:create_slider({
-    title = "Parry Cooldown",
-    flag = "parry_cooldown",
-    minimum_value = 0.1,
-    maximum_value = 1.0,
-    value = 0.2,
-    round_number = false,
-    callback = function(value)
-        EnhancedParrySystem.__properties.__parry_cooldown = value
-    end
-})
+    enhancedParryModule:create_slider({
+        title = "Parry Cooldown",
+        flag = "parry_cooldown",
+        minimum_value = 0.1,
+        maximum_value = 1.0,
+        value = 0.2,
+        round_number = false,
+        callback = function(value)
+            EnhancedParrySystem.__properties.__parry_cooldown = value
+        end
+    })
 
-enhancedParryModule:create_slider({
-    title = "Max Prediction Distance",
-    flag = "max_prediction_distance",
-    minimum_value = 20,
-    maximum_value = 100,
-    value = 50,
-    round_number = true,
-    callback = function(value)
-        EnhancedParrySystem.__config.__max_prediction_distance = value
-    end
-})
+    enhancedParryModule:create_slider({
+        title = "Max Prediction Distance",
+        flag = "max_prediction_distance",
+        minimum_value = 20,
+        maximum_value = 100,
+        value = 50,
+        round_number = true,
+        callback = function(value)
+            EnhancedParrySystem.__config.__max_prediction_distance = value
+        end
+    })
+end)
 
 local ParticleSystem = {
     Particles = {},
