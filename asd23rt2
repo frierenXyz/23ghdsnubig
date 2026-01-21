@@ -4674,6 +4674,167 @@ end
 
 No_Render:change_state(false)
 
+-- FFLAG MANAGER SYSTEM (must be defined before UI modules)
+local FFlagManager = {
+    __properties = {
+        __current_profile = "Default",
+        __custom_flags = {},
+        __applied_flags = {},
+        __auto_apply = false
+    },
+    
+    __profiles = {
+        ["Default"] = {
+            ["DFIntPhysicsEMAInverseSmoothingFactor"] = "2074",
+            ["FFlagAnimationTrackStepFix"] = "True",
+            ["FFlagAnimatorRetargetSkipLowerBodyIK"] = "False",
+            ["FFlagAnimationStreamSourceUseRuntimeSyncPrims"] = "True",
+            ["DFIntAnimatorRetargetSkipLowerBodyIKDistance10x"] = "0",
+            ["FFlagFixKeyframeGeneration"] = "True",
+            ["DFFlagAnimatorEnableNewAdornments"] = "True",
+            ["FFlagAnimatorRetargetSkipAnkleModification"] = "True",
+            ["FFlagKeyframeSequenceUseRuntimeSyncPrims"] = "True",
+            ["FFlagHumanoidStateUseRuntimeSyncPrims"] = "True",
+            ["FFlagQuaternionPoseCorrection"] = "True",
+            ["FFlagRealTimeAnimationEnableRefactor"] = "True",
+            ["FFlagAnimationStreamTrackUseRuntimeSyncPrims"] = "True",
+            ["NumFramesAllowedToBeAboveError"] = "0",
+            ["CorrectServerReplicatorStatsIP"] = "True",
+            ["FastGPULightCulling3"] = "True",
+            ["ClientLightingTechnologyChangedTelemetryHundredthsPercent"] = "0",
+            ["Network"] = "7",
+            ["PerformanceControlFrameTimeMax"] = "1",
+            ["DFFlagGraphicsQualityUsageTelemetry"] = "False",
+            ["DFIntNetworkQualityResponderMaxWaitTime"] = "1",
+            ["DFIntConnectionMTUSize"] = "1240",
+            ["DFIntRakNetMtuValue1InBytes"] = "1280",
+            ["DFIntRakNetMtuValue2InBytes"] = "1240",
+            ["DFIntRakNetMtuValue3InBytes"] = "1200",
+            ["FFlagDebugRenderingSetDeterministic"] = "True",
+            ["DFIntHACDPointSampleDistApartTenths"] = "2147483647",
+            ["FIntSSAOMipLevels"] = "1",
+            ["FIntFRMMinGrassDistance"] = "0",
+            ["FIntFRMMaxGrassDistance"] = "0",
+            ["FIntGrassMovementReducedMotionFactor"] = "0",
+            ["DFFlagTextureQualityOverrideEnabled"] = "True",
+            ["DFIntTextureQualityOverride"] = "0",
+            ["DFFlagGameNetFixReplicationSkipBug"] = "True",
+            ["DFFlagCorrectCachePolicySkipRedirectCache"] = "True",
+            ["DFFlagRakNetFixBwCollapse"] = "False",
+            ["DFFlagRakNetDecoupleRecvAndUpdateLoopShutdown"] = "True",
+            ["FFlagPushFrameTimeToHarmony"] = "True",
+            ["DFFlagSkipSomePropertiesSkip"] = "True",
+            ["DFFlagSkipReadDiskCacheRedirects"] = "True",
+            ["DFFlagSkipSomeProperties"] = "True",
+            ["DFFlagReplicatorCheckReadTableCollisions"] = "True"
+        },
+        
+        ["Performance"] = {
+            ["TaskSchedulerTargetFps"] = "5099990",
+            ["DFIntTextureQualityOverride"] = "0",
+            ["DFFlagTextureQualityOverrideEnabled"] = "True",
+            ["FIntDebugTextureManagerSkipMips"] = "4",
+            ["DFIntWaitOnUpdateNetworkLoopEndedMS"] = "1",
+            ["FIntFontSizePadding"] = "2",
+            ["FFlagAdServiceEnabled"] = "False",
+            ["DFIntDebugFRMQualityLevelOverride"] = "3",
+            ["DFIntCSGLevelOfDetailSwitchingDistance"] = "0",
+            ["DFIntCSGLevelOfDetailSwitchingDistanceL12"] = "0",
+            ["DFIntCSGLevelOfDetailSwitchingDistanceL34"] = "0",
+            ["DFIntCSGLevelOfDetailSwitchingDistanceL23"] = "0",
+            ["FIntRobloxGuiBlurIntensity"] = "0"
+        },
+        
+        ["LagBall"] = {
+            ["DFIntMaxProcessPacketsJobScaling"] = "2139999999",
+            ["DFIntMaxProcessPacketsStepsAccumulated"] = "0",
+            ["DFIntMaxProcessPacketsStepsPerCyclic"] = "2139999999",
+            ["DFIntMaxFrameBufferSize"] = "4",
+            ["DFIntMaxFramesToSend"] = "1",
+            ["DFIntMaxAverageFrameDelayExceedFactor"] = "0",
+            ["DFIntPerformanceControlFrameTimeMax"] = "1",
+            ["FIntInterpolationAwareTargetTimeLerpHundredth"] = "100",
+            ["DFIntNumFramesAllowedToBeAboveError"] = "0",
+            ["DFIntInterpolationMinAssemblyCount"] = "1",
+            ["DFIntCodecMaxOutgoingFrames"] = "2139999999",
+            ["DFIntCodecMaxIncomingPackets"] = "2139999999",
+            ["DFIntClientPacketMaxDelayMs"] = "1",
+            ["DFIntClientPacketHealthyAllocationPercent"] = "50",
+            ["DFIntInterpolationDtLimitForLod"] = "1",
+            ["DFIntParallelAdaptiveInterpolationBatchCount"] = "1",
+            ["DFIntRakNetClockDriftAdjustmentPerPingMillisecond"] = "2139999999",
+            ["FIntInterpolationMaxDelayMSec"] = "1",
+            ["FIntNumFramesToCaptureCallStack"] = "1"
+        },
+        
+        ["Network"] = {
+            ["DFIntNetworkQualityResponderMaxWaitTime"] = "1",
+            ["DFIntConnectionMTUSize"] = "1400",
+            ["DFIntRakNetMtuValue1InBytes"] = "1400",
+            ["DFIntRakNetMtuValue2InBytes"] = "1400",
+            ["DFIntRakNetMtuValue3InBytes"] = "1400",
+            ["DFFlagRakNetFixBwCollapse"] = "True",
+            ["DFFlagRakNetDecoupleRecvAndUpdateLoopShutdown"] = "True",
+            ["DFFlagGameNetFixReplicationSkipBug"] = "True",
+            ["DFFlagCorrectCachePolicySkipRedirectCache"] = "True",
+            ["Network"] = "10",
+            ["DFIntMaxProcessPacketsJobScaling"] = "1000",
+            ["DFIntCodecMaxIncomingPackets"] = "500",
+            ["DFIntCodecMaxOutgoingFrames"] = "1000"
+        }
+    }
+}
+
+-- Apply FFlag Profile
+function FFlagManager.applyProfile(profileName)
+    local profile = FFlagManager.__profiles[profileName]
+    if not profile then
+        warn("FFlag profile not found: " .. profileName)
+        return false
+    end
+    
+    local successCount = 0
+    local totalCount = 0
+    
+    for flag, value in pairs(profile) do
+        totalCount = totalCount + 1
+        local success = pcall(function()
+            setfflag(flag, tostring(value))
+        end)
+        if success then
+            successCount = successCount + 1
+            FFlagManager.__properties.__applied_flags[flag] = value
+        end
+    end
+    
+    FFlagManager.__properties.__current_profile = profileName
+    
+    print(string.format("Applied %d/%d FFlags from profile '%s'", successCount, totalCount, profileName))
+    return successCount == totalCount
+end
+
+-- Add Custom FFlag
+function FFlagManager.addCustomFlag(flagName, value)
+    FFlagManager.__properties.__custom_flags[flagName] = value
+    local success = pcall(function()
+        setfflag(flagName, tostring(value))
+    end)
+    return success
+end
+
+-- Get Current Profile
+function FFlagManager.getCurrentProfile()
+    return FFlagManager.__properties.__current_profile
+end
+
+-- Get Applied Flags
+function FFlagManager.getAppliedFlags()
+    return FFlagManager.__properties.__applied_flags
+end
+
+-- Initialize FFlag Manager
+FFlagManager.applyProfile("Default")
+
 -- FFLAG MANAGER MODULE
 local fflagModule = misc:create_module({
     title = 'FFlag Manager',
@@ -6264,167 +6425,6 @@ game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
         end
     end
 end)
-
--- FFLAG MANAGER SYSTEM
-local FFlagManager = {
-    __properties = {
-        __current_profile = "Default",
-        __custom_flags = {},
-        __applied_flags = {},
-        __auto_apply = false
-    },
-    
-    __profiles = {
-        ["Default"] = {
-            ["DFIntPhysicsEMAInverseSmoothingFactor"] = "2074",
-            ["FFlagAnimationTrackStepFix"] = "True",
-            ["FFlagAnimatorRetargetSkipLowerBodyIK"] = "False",
-            ["FFlagAnimationStreamSourceUseRuntimeSyncPrims"] = "True",
-            ["DFIntAnimatorRetargetSkipLowerBodyIKDistance10x"] = "0",
-            ["FFlagFixKeyframeGeneration"] = "True",
-            ["DFFlagAnimatorEnableNewAdornments"] = "True",
-            ["FFlagAnimatorRetargetSkipAnkleModification"] = "True",
-            ["FFlagKeyframeSequenceUseRuntimeSyncPrims"] = "True",
-            ["FFlagHumanoidStateUseRuntimeSyncPrims"] = "True",
-            ["FFlagQuaternionPoseCorrection"] = "True",
-            ["FFlagRealTimeAnimationEnableRefactor"] = "True",
-            ["FFlagAnimationStreamTrackUseRuntimeSyncPrims"] = "True",
-            ["NumFramesAllowedToBeAboveError"] = "0",
-            ["CorrectServerReplicatorStatsIP"] = "True",
-            ["FastGPULightCulling3"] = "True",
-            ["ClientLightingTechnologyChangedTelemetryHundredthsPercent"] = "0",
-            ["Network"] = "7",
-            ["PerformanceControlFrameTimeMax"] = "1",
-            ["DFFlagGraphicsQualityUsageTelemetry"] = "False",
-            ["DFIntNetworkQualityResponderMaxWaitTime"] = "1",
-            ["DFIntConnectionMTUSize"] = "1240",
-            ["DFIntRakNetMtuValue1InBytes"] = "1280",
-            ["DFIntRakNetMtuValue2InBytes"] = "1240",
-            ["DFIntRakNetMtuValue3InBytes"] = "1200",
-            ["FFlagDebugRenderingSetDeterministic"] = "True",
-            ["DFIntHACDPointSampleDistApartTenths"] = "2147483647",
-            ["FIntSSAOMipLevels"] = "1",
-            ["FIntFRMMinGrassDistance"] = "0",
-            ["FIntFRMMaxGrassDistance"] = "0",
-            ["FIntGrassMovementReducedMotionFactor"] = "0",
-            ["DFFlagTextureQualityOverrideEnabled"] = "True",
-            ["DFIntTextureQualityOverride"] = "0",
-            ["DFFlagGameNetFixReplicationSkipBug"] = "True",
-            ["DFFlagCorrectCachePolicySkipRedirectCache"] = "True",
-            ["DFFlagRakNetFixBwCollapse"] = "False",
-            ["DFFlagRakNetDecoupleRecvAndUpdateLoopShutdown"] = "True",
-            ["FFlagPushFrameTimeToHarmony"] = "True",
-            ["DFFlagSkipSomePropertiesSkip"] = "True",
-            ["DFFlagSkipReadDiskCacheRedirects"] = "True",
-            ["DFFlagSkipSomeProperties"] = "True",
-            ["DFFlagReplicatorCheckReadTableCollisions"] = "True"
-        },
-        
-        ["Performance"] = {
-            ["TaskSchedulerTargetFps"] = "5099990",
-            ["DFIntTextureQualityOverride"] = "0",
-            ["DFFlagTextureQualityOverrideEnabled"] = "True",
-            ["FIntDebugTextureManagerSkipMips"] = "4",
-            ["DFIntWaitOnUpdateNetworkLoopEndedMS"] = "1",
-            ["FIntFontSizePadding"] = "2",
-            ["FFlagAdServiceEnabled"] = "False",
-            ["DFIntDebugFRMQualityLevelOverride"] = "3",
-            ["DFIntCSGLevelOfDetailSwitchingDistance"] = "0",
-            ["DFIntCSGLevelOfDetailSwitchingDistanceL12"] = "0",
-            ["DFIntCSGLevelOfDetailSwitchingDistanceL34"] = "0",
-            ["DFIntCSGLevelOfDetailSwitchingDistanceL23"] = "0",
-            ["FIntRobloxGuiBlurIntensity"] = "0"
-        },
-        
-        ["LagBall"] = {
-            ["DFIntMaxProcessPacketsJobScaling"] = "2139999999",
-            ["DFIntMaxProcessPacketsStepsAccumulated"] = "0",
-            ["DFIntMaxProcessPacketsStepsPerCyclic"] = "2139999999",
-            ["DFIntMaxFrameBufferSize"] = "4",
-            ["DFIntMaxFramesToSend"] = "1",
-            ["DFIntMaxAverageFrameDelayExceedFactor"] = "0",
-            ["DFIntPerformanceControlFrameTimeMax"] = "1",
-            ["FIntInterpolationAwareTargetTimeLerpHundredth"] = "100",
-            ["DFIntNumFramesAllowedToBeAboveError"] = "0",
-            ["DFIntInterpolationMinAssemblyCount"] = "1",
-            ["DFIntCodecMaxOutgoingFrames"] = "2139999999",
-            ["DFIntCodecMaxIncomingPackets"] = "2139999999",
-            ["DFIntClientPacketMaxDelayMs"] = "1",
-            ["DFIntClientPacketHealthyAllocationPercent"] = "50",
-            ["DFIntInterpolationDtLimitForLod"] = "1",
-            ["DFIntParallelAdaptiveInterpolationBatchCount"] = "1",
-            ["DFIntRakNetClockDriftAdjustmentPerPingMillisecond"] = "2139999999",
-            ["FIntInterpolationMaxDelayMSec"] = "1",
-            ["FIntNumFramesToCaptureCallStack"] = "1"
-        },
-        
-        ["Network"] = {
-            ["DFIntNetworkQualityResponderMaxWaitTime"] = "1",
-            ["DFIntConnectionMTUSize"] = "1400",
-            ["DFIntRakNetMtuValue1InBytes"] = "1400",
-            ["DFIntRakNetMtuValue2InBytes"] = "1400",
-            ["DFIntRakNetMtuValue3InBytes"] = "1400",
-            ["DFFlagRakNetFixBwCollapse"] = "True",
-            ["DFFlagRakNetDecoupleRecvAndUpdateLoopShutdown"] = "True",
-            ["DFFlagGameNetFixReplicationSkipBug"] = "True",
-            ["DFFlagCorrectCachePolicySkipRedirectCache"] = "True",
-            ["Network"] = "10",
-            ["DFIntMaxProcessPacketsJobScaling"] = "1000",
-            ["DFIntCodecMaxIncomingPackets"] = "500",
-            ["DFIntCodecMaxOutgoingFrames"] = "1000"
-        }
-    }
-}
-
--- Apply FFlag Profile
-function FFlagManager.applyProfile(profileName)
-    local profile = FFlagManager.__profiles[profileName]
-    if not profile then
-        warn("FFlag profile not found: " .. profileName)
-        return false
-    end
-    
-    local successCount = 0
-    local totalCount = 0
-    
-    for flag, value in pairs(profile) do
-        totalCount = totalCount + 1
-        local success = pcall(function()
-            setfflag(flag, tostring(value))
-        end)
-        if success then
-            successCount = successCount + 1
-            FFlagManager.__properties.__applied_flags[flag] = value
-        end
-    end
-    
-    FFlagManager.__properties.__current_profile = profileName
-    
-    print(string.format("Applied %d/%d FFlags from profile '%s'", successCount, totalCount, profileName))
-    return successCount == totalCount
-end
-
--- Add Custom FFlag
-function FFlagManager.addCustomFlag(flagName, value)
-    FFlagManager.__properties.__custom_flags[flagName] = value
-    local success = pcall(function()
-        setfflag(flagName, tostring(value))
-    end)
-    return success
-end
-
--- Get Current Profile
-function FFlagManager.getCurrentProfile()
-    return FFlagManager.__properties.__current_profile
-end
-
--- Get Applied Flags
-function FFlagManager.getAppliedFlags()
-    return FFlagManager.__properties.__applied_flags
-end
-
--- Initialize FFlag Manager
-FFlagManager.applyProfile("Default")
 
 main:load()
 
