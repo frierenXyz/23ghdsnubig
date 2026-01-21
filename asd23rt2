@@ -1049,7 +1049,7 @@ System.detection = {
     }
 }
 
--- Advanced trajectory prediction for high velocity balls with enhanced accuracy
+-- Advanced trajectory prediction for high velocity balls
 function System.detection.predict_trajectory(ball, prediction_time)
     local props = System.detection.__ball_properties
     local zoomies = ball:FindFirstChild("zoomies")
@@ -1061,30 +1061,24 @@ function System.detection.predict_trajectory(ball, prediction_time)
     
     if speed < 1 then return nil end
     
-    -- Enhanced time step calculation based on velocity
-    local time_step = speed > 200 and 0.02 or (speed > 100 and 0.03 or 0.05)
+    -- Use velocity history for more accurate prediction
+    local predicted_positions = {}
+    local time_step = 0.05 -- 50ms steps
     local steps = math.floor(prediction_time / time_step)
     
-    -- Enhanced velocity history analysis for better prediction
+    -- Analyze recent velocity changes for curve prediction
     local velocity_trend = Vector3.new(0, 0, 0)
     local acceleration = Vector3.new(0, 0, 0)
-    local jerk = Vector3.new(0, 0, 0) -- Rate of change of acceleration
     
-    if #props.__velocity_history >= 4 then
+    if #props.__velocity_history >= 3 then
         local recent = props.__velocity_history[#props.__velocity_history]
         local previous = props.__velocity_history[#props.__velocity_history - 2]
-        local older = props.__velocity_history[#props.__velocity_history - 4]
         
-        if recent and previous and older then
-            local time_diff1 = recent.time - previous.time
-            local time_diff2 = previous.time - older.time
-            
-            if time_diff1 > 0 and time_diff2 > 0 then
-                local accel1 = (recent.velocity - previous.velocity) / time_diff1
-                local accel2 = (previous.velocity - older.velocity) / time_diff2
-                acceleration = (accel1 + accel2) / 2
-                jerk = (accel1 - accel2) / ((time_diff1 + time_diff2) / 2)
-                velocity_trend = acceleration * time_step + (jerk * time_step * time_step) / 2
+        if recent and previous then
+            local time_diff = recent.time - previous.time
+            if time_diff > 0 then
+                acceleration = (recent.velocity - previous.velocity) / time_diff
+                velocity_trend = acceleration * time_step
             end
         end
     end
@@ -1092,64 +1086,45 @@ function System.detection.predict_trajectory(ball, prediction_time)
     -- Apply curve intensity adjustments
     local curve_factor = 1 + (props.__curve_intensity * 0.3)
     
-    -- Generate predicted positions with enhanced curve modeling
+    -- Generate predicted positions
     local predicted_velocity = current_velocity
     local predicted_position = current_position
-    local predicted_positions = {} -- Fixed: Missing variable declaration
     
     for i = 1, steps do
-        -- Enhanced physics-based prediction with jerk
-        predicted_velocity = predicted_velocity + (acceleration * time_step) + (jerk * time_step * time_step / 2)
+        -- Apply acceleration and curve effects
+        predicted_velocity = predicted_velocity + (acceleration * time_step)
         
-        -- Apply curve modifications based on detected curve types with enhanced modeling
+        -- Apply curve modifications based on detected curve types
         if props.__curve_types.sudden then
-            -- Enhanced sudden curve with velocity-dependent deviation
-            local velocity_factor = math.min(speed / 200, 1.0)
+            -- Add random deviation for sudden curves
             local random_deviation = Vector3.new(
-                math.random(-150, 150) * props.__curve_intensity * velocity_factor,
-                math.random(-75, 75) * props.__curve_intensity * velocity_factor,
-                math.random(-150, 150) * props.__curve_intensity * velocity_factor
+                math.random(-100, 100) * props.__curve_intensity,
+                math.random(-50, 50) * props.__curve_intensity,
+                math.random(-100, 100) * props.__curve_intensity
             )
             predicted_velocity = predicted_velocity + random_deviation
         end
         
         if props.__curve_types.spiral then
-            -- Enhanced spiral with variable radius and frequency
-            local spiral_radius = 20 * props.__curve_intensity * (1 + speed / 300)
-            local rotation_angle = (i / steps) * math.pi * 4 * props.__curve_intensity -- 2 full rotations
+            -- Add rotational component for spiral curves
+            local rotation_angle = (i / steps) * math.pi * 2 * props.__curve_intensity
             local rotation_matrix = CFrame.Angles(0, rotation_angle, 0)
-            local spiral_offset = Vector3.new(
-                math.cos(rotation_angle) * spiral_radius,
-                math.sin(rotation_angle * 0.5) * spiral_radius * 0.3, -- Vertical component
-                math.sin(rotation_angle) * spiral_radius
-            )
-            predicted_velocity = rotation_matrix:VectorToWorldSpace(predicted_velocity) + spiral_offset
+            predicted_velocity = rotation_matrix:VectorToWorldSpace(predicted_velocity)
         end
         
         if props.__curve_types.zigzag then
-            -- Enhanced zigzag with frequency and amplitude modulation
-            local zigzag_amplitude = 75 * props.__curve_intensity * (1 + speed / 400)
-            local zigzag_frequency = 0.8 + (speed / 500) -- Frequency increases with speed
-            local zigzag_direction = math.sin(i * zigzag_frequency) * zigzag_amplitude
-            local zigzag_vertical = math.cos(i * zigzag_frequency * 0.7) * zigzag_amplitude * 0.3
-            predicted_velocity = predicted_velocity + Vector3.new(zigzag_direction, zigzag_vertical, 0)
+            -- Add alternating direction changes
+            local zigzag_amplitude = 50 * props.__curve_intensity
+            local zigzag_direction = math.sin(i * 0.5) * zigzag_amplitude
+            predicted_velocity = predicted_velocity + Vector3.new(zigzag_direction, 0, 0)
         end
         
-        if props.__curve_types.sustained then
-            -- Enhanced sustained curve with gradual direction change
-            local sustained_factor = props.__curve_intensity * 0.5
-            local curve_angle = (i / steps) * math.pi * sustained_factor
-            local curve_matrix = CFrame.Angles(0, curve_angle, 0)
-            predicted_velocity = curve_matrix:VectorToWorldSpace(predicted_velocity)
-        end
-        
-        -- Update position with enhanced time integration
+        -- Update position
         predicted_position = predicted_position + (predicted_velocity * time_step)
         table.insert(predicted_positions, {
             position = predicted_position,
             time = tick() + (i * time_step),
-            velocity = predicted_velocity,
-            confidence = math.max(0.1, 1.0 - (i / steps) * 0.3) -- Confidence decreases over time
+            velocity = predicted_velocity
         })
     end
     
@@ -1308,44 +1283,32 @@ function System.detection.get_timing_multipliers(speed, ping, curve_intensity, a
         sustained = 1.1
     }
     
-    -- Enhanced base velocity-optimized timing with more granular tiers
-    if speed > 300 then -- Extreme velocity
-        multipliers.sudden = 3.0
-        multipliers.sustained = 2.2
-    elseif speed > 250 then -- Ultra high velocity
-        multipliers.sudden = 2.8
-        multipliers.sustained = 2.0
-    elseif speed > 200 then -- Very high velocity
+    -- Base velocity-optimized timing
+    if speed > 250 then -- Ultra high velocity
         multipliers.sudden = 2.5
         multipliers.sustained = 1.8
-    elseif speed > 150 then -- High velocity
+    elseif speed > 200 then -- Very high velocity
         multipliers.sudden = 2.2
         multipliers.sustained = 1.6
+    elseif speed > 150 then -- High velocity
+        multipliers.sudden = 2.0
+        multipliers.sustained = 1.5
     elseif speed > 100 then -- Medium-high velocity
-        multipliers.sudden = 1.9
-        multipliers.sustained = 1.4
-    elseif speed > 60 then -- Medium velocity
-        multipliers.sudden = 1.7
+        multipliers.sudden = 1.8
         multipliers.sustained = 1.3
-    elseif speed > 30 then -- Low-medium velocity
-        multipliers.sudden = 1.5
+    elseif speed > 60 then -- Medium velocity
+        multipliers.sudden = 1.6
         multipliers.sustained = 1.2
     end
     
-    -- Enhanced ping compensation with more aggressive scaling for high ping
-    if ping > 0.4 then -- Extreme ping (400ms+)
-        multipliers.sudden = multipliers.sudden * 1.5
-        multipliers.sustained = multipliers.sustained * 1.4
-    elseif ping > 0.3 then -- Very high ping (300ms+)
-        multipliers.sudden = multipliers.sudden * 1.4
-        multipliers.sustained = multipliers.sustained * 1.35
-    elseif ping > 0.2 then -- High ping (200ms+)
+    -- Ping compensation for timing
+    if ping > 0.3 then -- Very high ping (300ms+)
         multipliers.sudden = multipliers.sudden * 1.3
         multipliers.sustained = multipliers.sustained * 1.25
-    elseif ping > 0.1 then -- Medium ping (100ms+)
+    elseif ping > 0.2 then -- High ping (200ms+)
         multipliers.sudden = multipliers.sudden * 1.2
         multipliers.sustained = multipliers.sustained * 1.15
-    elseif ping > 0.05 then -- Low-medium ping (50ms+)
+    elseif ping > 0.1 then -- Medium ping (100ms+)
         multipliers.sudden = multipliers.sudden * 1.1
         multipliers.sustained = multipliers.sustained * 1.08
     end
@@ -1425,8 +1388,8 @@ function System.detection.is_curved()
     local distance = (pos - ball.Position).Magnitude
     local reach_time = distance / speed - ping
 
-    -- Enhanced ping compensation for high ping scenarios with more aggressive scaling
-    local ping_compensation = math.min(ping * 1.5, 0.6) -- Increased from 1.2 to 1.5, cap from 0.5 to 0.6
+    -- Enhanced ping compensation for high ping scenarios
+    local ping_compensation = math.min(ping * 1.2, 0.5)
     local adjusted_reach_time = reach_time - ping_compensation
     
     -- Update velocity and position history for advanced analysis
@@ -1476,8 +1439,8 @@ function System.detection.is_curved()
                 props.__angular_velocity = angular_velocity
                 
                 -- Enhanced sudden curve detection with velocity compensation
-                local sudden_threshold = speed > 250 and 0.12 or (speed > 150 and 0.18 or (speed > 80 and 0.25 or 0.32))
-                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 0.8)
+                local sudden_threshold = speed > 200 and 0.15 or (speed > 100 and 0.25 or 0.35)
+                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 0.5)
                 
                 if angular_velocity > ping_adjusted_threshold then
                     props.__curve_types.sudden = true
@@ -1682,7 +1645,7 @@ function System.detection.is_curved()
         return false
     end
 
-    -- Enhanced timing-based curve detection with velocity-optimized multipliers for better consistency
+    -- Enhanced timing-based curve detection with velocity-optimized multipliers
     local timing_multipliers = System.detection.get_timing_multipliers(speed, ping, curve_intensity, adaptive_thresholds)
     
     local sudden_curve_multiplier = timing_multipliers.sudden
@@ -1697,12 +1660,8 @@ function System.detection.is_curved()
         return true
     end
 
-    -- Enhanced final decision with more reliable detection
-    local traditional_detection = dot < dot_threshold
-    local curve_confidence = curve_intensity > 0.3 -- Minimum confidence for curve detection
-    
-    -- Return true if either traditional detection or high-confidence curve detection
-    return traditional_detection or (curve_detected and curve_confidence)
+    -- Final decision: any detected curve type or traditional detection
+    return curve_detected or (dot < dot_threshold)
 end
 
 ReplicatedStorage.Remotes.DeathBall.OnClientEvent:Connect(function(c, d)
@@ -1889,22 +1848,15 @@ function System.autoparry.start()
                 end
             end
             
-            -- Enhanced speed divisor calculation with aggressive timing to prevent early parrying during movement
-            local capped_speed_diff = math.min(math.max(speed - 22, 0), 650) -- Further increased from 18 to 22
-            local ping_speed_factor = ping_ms > 100 and (1 + (ping_ms - 100) / 350) or 1 -- Even more conservative scaling
-            local speed_divisor = (3.5 + capped_speed_diff * 0.001) * System.__properties.__divisor_multiplier * ping_speed_factor
+            -- Enhanced speed divisor calculation with ping compensation
+            local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+            local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
+            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
             
-            -- Enhanced movement compensation - more aggressive when moving
-            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
-            local movement_speed = humanoid and humanoid.MoveDirection.Magnitude or 0
-            local movement_multiplier = movement_speed > 0.5 and 1.6 or (movement_speed > 0.1 and 1.3 or 1.0)
-            local velocity_multiplier = humanoid and humanoid.MoveDirection.Magnitude > 0 and (humanoid.MoveDirection:Dot(velocity.Unit) + 1) / 2 or 1
-            
-            -- Aggressive parry accuracy calculation to prevent early parrying
-            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 16) -- Increased from 14 to 16
-            local high_ping_buffer = ping_ms > 80 and math.min(ping_ms / 70, 2.5) or 0 -- More conservative
-            local movement_buffer = movement_speed > 0 and math.max(5 * movement_multiplier * velocity_multiplier, 3) or 0 -- Enhanced movement buffer
-            local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer
+            -- Improved parry accuracy calculation for high ping
+            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
+            local parry_accuracy = base_parry_accuracy + high_ping_buffer
             
             local curved = System.detection.is_curved()
             
@@ -2085,21 +2037,14 @@ function System.autoparry.start()
                     
                     local speed = velocity.Magnitude
                     
-                    local capped_speed_diff = math.min(math.max(speed - 22, 0), 650) -- Increased from 18 to 22
-                    local ping_speed_factor = ping_ms > 100 and (1 + (ping_ms - 100) / 350) or 1 -- More conservative scaling
-                    local speed_divisor = (3.5 + capped_speed_diff * 0.001) * System.__properties.__divisor_multiplier * ping_speed_factor
+                    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
+                    local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
+                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
                     
-                    -- Enhanced movement compensation for training scenarios
-                    local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
-                    local movement_speed = humanoid and humanoid.MoveDirection.Magnitude or 0
-                    local movement_multiplier = movement_speed > 0.5 and 1.6 or (movement_speed > 0.1 and 1.3 or 1.0)
-                    local velocity_multiplier = humanoid and humanoid.MoveDirection.Magnitude > 0 and (humanoid.MoveDirection:Dot(velocity.Unit) + 1) / 2 or 1
-                    
-                    -- Aggressive parry accuracy calculation for training
-                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 16) -- Increased from 14 to 16
-                    local high_ping_buffer = ping_ms > 80 and math.min(ping_ms / 70, 2.5) or 0 -- More conservative
-                    local movement_buffer = movement_speed > 0 and math.max(5 * movement_multiplier * velocity_multiplier, 3) or 0 -- Enhanced movement buffer
-                    local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer
+                    -- Improved parry accuracy calculation for high ping in training
+                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
+                    local parry_accuracy = base_parry_accuracy + high_ping_buffer
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
@@ -2132,7 +2077,7 @@ System.manual_spam = {}
 
 -- Script local sem limitações de CPS
 local manualSpamAccumulator = 0
-local MANUAL_SPAM_INTERVAL = 0.005 -- 5ms interval for rapid spam (200 CPS)
+local MANUAL_SPAM_INTERVAL = 0 -- Sem intervalo, executa a cada frame
 
 function System.manual_spam.start()
     if System.__properties.__connections.__manual_spam_connection then
@@ -2140,7 +2085,6 @@ function System.manual_spam.start()
     end
     
     System.__properties.__manual_spam_enabled = true
-    manualSpamAccumulator = 0 -- Reset accumulator when starting
     
     System.__properties.__connections.__manual_spam_connection =
     RunService.RenderStepped:Connect(function(deltaTime)
@@ -2148,28 +2092,14 @@ function System.manual_spam.start()
             return
         end
         
-        -- Only spam when key is held down, not automatically
-        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or 
-           UserInputService:IsKeyDown(Enum.KeyCode.F) or
-           UserInputService:IsKeyDown(Enum.KeyCode.E) then
-            
-            manualSpamAccumulator = manualSpamAccumulator + deltaTime
-            
-            if manualSpamAccumulator >= MANUAL_SPAM_INTERVAL then
-                manualSpamAccumulator = 0
-                
-                -- Executa rapidamente com intervalo mínimo
-                if getgenv().ManualSpamMode == "Keypress" then
-                    System.parry.keypress()
-                else
-                    System.parry.execute()
-                    if getgenv().ManualSpamAnimationFix then
-                        System.animation.play_grab_parry()
-                    end
-                end
-            end
+        -- Executa diretamente sem verificação de intervalo
+        if getgenv().ManualSpamMode == "Keypress" then
+            System.parry.keypress()
         else
-            manualSpamAccumulator = 0 -- Reset when key is released
+            System.parry.execute()
+            if getgenv().ManualSpamAnimationFix then
+                System.animation.play_grab_parry()
+            end
         end
     end)
 end
@@ -5715,7 +5645,7 @@ local SkinChanger = misc:create_module({
     flag = 'SkinChanger',
     description = 'Skin Changer',
     section = 'left',
-    callback = function(value: boolean)
+    callback = function(value)
         getgenv().skinChangerEnabled = value
         if value then
             getgenv().updateSword()
@@ -5729,7 +5659,7 @@ SkinChanger:change_state(false)
 local changeSwordModelCheckbox = SkinChanger:create_checkbox({
     title = "Change Sword Model",
     flag = "ChangeSwordModel",
-    callback = function(value: boolean)
+    callback = function(value)
         getgenv().changeSwordModel = value
         if getgenv().skinChangerEnabled then
             getgenv().updateSword()
@@ -5756,7 +5686,7 @@ SkinChanger:create_divider({})
 local changeSwordAnimationCheckbox = SkinChanger:create_checkbox({
     title = "Change Sword Animation",
     flag = "ChangeSwordAnimation",
-    callback = function(value: boolean)
+    callback = function(value)
         getgenv().changeSwordAnimation = value
         if getgenv().skinChangerEnabled then
             getgenv().updateSword()
@@ -5783,7 +5713,7 @@ SkinChanger:create_divider({})
 local changeSwordFXCheckbox = SkinChanger:create_checkbox({
     title = "Change Sword FX",
     flag = "ChangeSwordFX",
-    callback = function(value: boolean)
+    callback = function(value)
         getgenv().changeSwordFX = value
         if getgenv().skinChangerEnabled then
             getgenv().updateSword()
