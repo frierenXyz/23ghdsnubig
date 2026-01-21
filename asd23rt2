@@ -6683,22 +6683,36 @@ end
 -- Initialize Enhanced Systems
 EnhancedParrySystem.interceptRemotes()
 
--- Enhanced Parry Update Loop
+-- Enhanced Parry Update Loop with Error Handling
 game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
-    if EnhancedParrySystem.__properties.__ball_tracking_enabled then
-        local ball = EnhancedParrySystem.trackBall()
-        if ball then
-            local shouldParry = EnhancedParrySystem.predictParry(ball)
-            if shouldParry and System.__properties.__autoparry_enabled then
-                -- Trigger parry with enhanced timing
-                pcall(function()
-                    if PF and not System.__properties.__parried then
-                        PF()
-                    end
-                end)
-            end
+    pcall(function()
+        -- Only run if both ball tracking and enhanced parry are enabled
+        if not EnhancedParrySystem.__properties.__ball_tracking_enabled then
+            return
         end
-    end
+        
+        -- Only track and predict if enhanced parry module is enabled
+        if not EnhancedParrySystem.__properties.__parry_prediction_enabled then
+            return
+        end
+        
+        local ball = EnhancedParrySystem.trackBall()
+        if not ball then
+            return
+        end
+        
+        local shouldParry = EnhancedParrySystem.predictParry(ball)
+        
+        -- Check if auto parry is enabled in the main System
+        if shouldParry and System.__properties.__autoparry_enabled then
+            -- Trigger parry with enhanced timing
+            pcall(function()
+                if PF and not System.__properties.__parried then
+                    PF()
+                end
+            end)
+        end
+    end)
 end)
 
 main:load()
