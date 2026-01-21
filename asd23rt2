@@ -1682,7 +1682,7 @@ function System.detection.is_curved()
         return false
     end
 
-    -- Enhanced timing-based curve detection with velocity-optimized multipliers
+    -- Enhanced timing-based curve detection with velocity-optimized multipliers for better consistency
     local timing_multipliers = System.detection.get_timing_multipliers(speed, ping, curve_intensity, adaptive_thresholds)
     
     local sudden_curve_multiplier = timing_multipliers.sudden
@@ -1697,8 +1697,12 @@ function System.detection.is_curved()
         return true
     end
 
-    -- Final decision: any detected curve type or traditional detection
-    return curve_detected or (dot < dot_threshold)
+    -- Enhanced final decision with more reliable detection
+    local traditional_detection = dot < dot_threshold
+    local curve_confidence = curve_intensity > 0.3 -- Minimum confidence for curve detection
+    
+    -- Return true if either traditional detection or high-confidence curve detection
+    return traditional_detection or (curve_detected and curve_confidence)
 end
 
 ReplicatedStorage.Remotes.DeathBall.OnClientEvent:Connect(function(c, d)
@@ -1885,15 +1889,16 @@ function System.autoparry.start()
                 end
             end
             
-            -- Enhanced speed divisor calculation with ping compensation
-            local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-            local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
-            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
+            -- Enhanced speed divisor calculation with better timing to prevent early parrying
+            local capped_speed_diff = math.min(math.max(speed - 15, 0), 650) -- Increased from 9.5 to 15
+            local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 250) or 1 -- More conservative scaling
+            local speed_divisor = (3.0 + capped_speed_diff * 0.0015) * System.__properties.__divisor_multiplier * ping_speed_factor
             
-            -- Improved parry accuracy calculation for high ping
-            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
-            local parry_accuracy = base_parry_accuracy + high_ping_buffer
+            -- Improved parry accuracy calculation with better timing to prevent early parrying
+            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 12) -- Increased from 9.5 to 12
+            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 50, 4) or 0 -- More conservative
+            local movement_buffer = LocalPlayer.Character.Humanoid.MoveDirection.Magnitude > 0 and 3 or 0 -- Add buffer for movement
+            local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer
             
             local curved = System.detection.is_curved()
             
@@ -2074,14 +2079,15 @@ function System.autoparry.start()
                     
                     local speed = velocity.Magnitude
                     
-                    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-                    local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
-                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
+                    local capped_speed_diff = math.min(math.max(speed - 15, 0), 650) -- Increased from 9.5 to 15
+                    local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 250) or 1 -- More conservative scaling
+                    local speed_divisor = (3.0 + capped_speed_diff * 0.0015) * System.__properties.__divisor_multiplier * ping_speed_factor
                     
                     -- Improved parry accuracy calculation for high ping in training
-                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-                    local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
-                    local parry_accuracy = base_parry_accuracy + high_ping_buffer
+                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 12) -- Increased from 9.5 to 12
+                    local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 50, 4) or 0 -- More conservative
+                    local movement_buffer = LocalPlayer.Character.Humanoid.MoveDirection.Magnitude > 0 and 3 or 0 -- Add buffer for movement
+                    local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
