@@ -1475,9 +1475,9 @@ function System.detection.is_curved()
                 
                 props.__angular_velocity = angular_velocity
                 
-                -- Enhanced sudden curve detection with velocity compensation for high speed balls
-                local sudden_threshold = speed > 350 and 0.08 or (speed > 250 and 0.10 or (speed > 150 and 0.14 or (speed > 80 and 0.20 or 0.28)))
-                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 1.0) -- More aggressive ping compensation for high speed
+                -- Enhanced sudden curve detection with velocity compensation
+                local sudden_threshold = speed > 250 and 0.12 or (speed > 150 and 0.18 or (speed > 80 and 0.25 or 0.32))
+                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 0.8)
                 
                 if angular_velocity > ping_adjusted_threshold then
                     props.__curve_types.sudden = true
@@ -1892,10 +1892,7 @@ function System.autoparry.start()
             -- Enhanced speed divisor calculation with aggressive timing to prevent early parrying during movement
             local capped_speed_diff = math.min(math.max(speed - 22, 0), 650) -- Further increased from 18 to 22
             local ping_speed_factor = ping_ms > 100 and (1 + (ping_ms - 100) / 350) or 1 -- Even more conservative scaling
-            
-            -- Enhanced high velocity ball handling - rocket speed optimization
-            local high_velocity_multiplier = speed > 300 and 0.8 or (speed > 200 and 0.9 or 1.0)
-            local speed_divisor = (3.5 + capped_speed_diff * 0.001) * System.__properties.__divisor_multiplier * ping_speed_factor * high_velocity_multiplier
+            local speed_divisor = (3.5 + capped_speed_diff * 0.001) * System.__properties.__divisor_multiplier * ping_speed_factor
             
             -- Enhanced movement compensation - more aggressive when moving
             local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
@@ -1903,14 +1900,13 @@ function System.autoparry.start()
             local movement_multiplier = movement_speed > 0.5 and 1.6 or (movement_speed > 0.1 and 1.3 or 1.0)
             local velocity_multiplier = humanoid and humanoid.MoveDirection.Magnitude > 0 and (humanoid.MoveDirection:Dot(velocity.Unit) + 1) / 2 or 1
             
-            -- Aggressive parry accuracy calculation to prevent early parrying with high velocity optimization
+            -- Aggressive parry accuracy calculation to prevent early parrying
             local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 16) -- Increased from 14 to 16
             local high_ping_buffer = ping_ms > 80 and math.min(ping_ms / 70, 2.5) or 0 -- More conservative
             local movement_buffer = movement_speed > 0 and math.max(5 * movement_multiplier * velocity_multiplier, 3) or 0 -- Enhanced movement buffer
+            local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer
             
-            -- High velocity ball close-range optimization - no need for auto spam
-            local close_range_bonus = speed > 250 and distance < 15 and -4 or (speed > 200 and distance < 12 and -2 or 0)
-            local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer + close_range_bonus
+            local curved = System.detection.is_curved()
             
             if ball:FindFirstChild('AeroDynamicSlashVFX') then
                 ball.AeroDynamicSlashVFX:Destroy()
@@ -1991,7 +1987,7 @@ function System.autoparry.start()
                         end
                     end
                     
-                    if getgenv().AutoAbility and getgenv().AutoAbility == true then
+                    if getgenv().AutoAbility then
                         local AbilityCD = LocalPlayer.PlayerGui.Hotbar.Ability.UIGradient
                         if AbilityCD.Offset.Y == 0.5 then
                             if LocalPlayer.Character.Abilities:FindFirstChild("Raging Deflection") and LocalPlayer.Character.Abilities["Raging Deflection"].Enabled or
@@ -2029,7 +2025,7 @@ function System.autoparry.start()
                         end
                     end
                     
-                    if getgenv().AutoAbility and getgenv().AutoAbility == true then
+                    if getgenv().AutoAbility then
                         local AbilityCD = LocalPlayer.PlayerGui.Hotbar.Ability.UIGradient
                         if AbilityCD.Offset.Y == 0.5 then
                             if LocalPlayer.Character.Abilities:FindFirstChild("Raging Deflection") and LocalPlayer.Character.Abilities["Raging Deflection"].Enabled or
@@ -5616,7 +5612,7 @@ local swordsController
 
 while task.wait() and (not swordsController) do
     for i,v in getconnections(ReplicatedStorage.Remotes.FireSwordInfo.OnClientEvent) do
-        if v and v.Function and islclosure(v.Function) then
+        if v.Function and islclosure(v.Function) then
             local upvalues = getupvalues(v.Function)
             if #upvalues == 1 and type(upvalues[1]) == "table" then
                 swordsController = upvalues[1]
@@ -5650,7 +5646,7 @@ local parrySuccessAllConnection
 
 while task.wait() and not parrySuccessAllConnection do
     for i,v in getconnections(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent) do
-        if v and v.Function and getinfo(v.Function).name == "parrySuccessAll" then
+        if v.Function and getinfo(v.Function).name == "parrySuccessAll" then
             parrySuccessAllConnection = v
             playParryFunc = v.Function
             v:Disable()
@@ -5661,7 +5657,7 @@ end
 local parrySuccessClientConnection
 while task.wait() and not parrySuccessClientConnection do
     for i,v in getconnections(ReplicatedStorage.Remotes.ParrySuccessClient.Event) do
-        if v and v.Function and getinfo(v.Function).name == "parrySuccessAll" then
+        if v.Function and getinfo(v.Function).name == "parrySuccessAll" then
             parrySuccessClientConnection = v
             v:Disable()
         end
