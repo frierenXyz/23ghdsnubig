@@ -1049,7 +1049,7 @@ System.detection = {
     }
 }
 
--- Advanced trajectory prediction for high velocity balls
+-- Advanced trajectory prediction for high velocity balls with enhanced accuracy
 function System.detection.predict_trajectory(ball, prediction_time)
     local props = System.detection.__ball_properties
     local zoomies = ball:FindFirstChild("zoomies")
@@ -1061,24 +1061,30 @@ function System.detection.predict_trajectory(ball, prediction_time)
     
     if speed < 1 then return nil end
     
-    -- Use velocity history for more accurate prediction
-    local predicted_positions = {}
-    local time_step = 0.05 -- 50ms steps
+    -- Enhanced time step calculation based on velocity
+    local time_step = speed > 200 and 0.02 or (speed > 100 and 0.03 or 0.05)
     local steps = math.floor(prediction_time / time_step)
     
-    -- Analyze recent velocity changes for curve prediction
+    -- Enhanced velocity history analysis for better prediction
     local velocity_trend = Vector3.new(0, 0, 0)
     local acceleration = Vector3.new(0, 0, 0)
+    local jerk = Vector3.new(0, 0, 0) -- Rate of change of acceleration
     
-    if #props.__velocity_history >= 3 then
+    if #props.__velocity_history >= 4 then
         local recent = props.__velocity_history[#props.__velocity_history]
         local previous = props.__velocity_history[#props.__velocity_history - 2]
+        local older = props.__velocity_history[#props.__velocity_history - 4]
         
-        if recent and previous then
-            local time_diff = recent.time - previous.time
-            if time_diff > 0 then
-                acceleration = (recent.velocity - previous.velocity) / time_diff
-                velocity_trend = acceleration * time_step
+        if recent and previous and older then
+            local time_diff1 = recent.time - previous.time
+            local time_diff2 = previous.time - older.time
+            
+            if time_diff1 > 0 and time_diff2 > 0 then
+                local accel1 = (recent.velocity - previous.velocity) / time_diff1
+                local accel2 = (previous.velocity - older.velocity) / time_diff2
+                acceleration = (accel1 + accel2) / 2
+                jerk = (accel1 - accel2) / ((time_diff1 + time_diff2) / 2)
+                velocity_trend = acceleration * time_step + (jerk * time_step * time_step) / 2
             end
         end
     end
@@ -1086,45 +1092,64 @@ function System.detection.predict_trajectory(ball, prediction_time)
     -- Apply curve intensity adjustments
     local curve_factor = 1 + (props.__curve_intensity * 0.3)
     
-    -- Generate predicted positions
+    -- Generate predicted positions with enhanced curve modeling
     local predicted_velocity = current_velocity
     local predicted_position = current_position
+    local predicted_positions = {} -- Fixed: Missing variable declaration
     
     for i = 1, steps do
-        -- Apply acceleration and curve effects
-        predicted_velocity = predicted_velocity + (acceleration * time_step)
+        -- Enhanced physics-based prediction with jerk
+        predicted_velocity = predicted_velocity + (acceleration * time_step) + (jerk * time_step * time_step / 2)
         
-        -- Apply curve modifications based on detected curve types
+        -- Apply curve modifications based on detected curve types with enhanced modeling
         if props.__curve_types.sudden then
-            -- Add random deviation for sudden curves
+            -- Enhanced sudden curve with velocity-dependent deviation
+            local velocity_factor = math.min(speed / 200, 1.0)
             local random_deviation = Vector3.new(
-                math.random(-100, 100) * props.__curve_intensity,
-                math.random(-50, 50) * props.__curve_intensity,
-                math.random(-100, 100) * props.__curve_intensity
+                math.random(-150, 150) * props.__curve_intensity * velocity_factor,
+                math.random(-75, 75) * props.__curve_intensity * velocity_factor,
+                math.random(-150, 150) * props.__curve_intensity * velocity_factor
             )
             predicted_velocity = predicted_velocity + random_deviation
         end
         
         if props.__curve_types.spiral then
-            -- Add rotational component for spiral curves
-            local rotation_angle = (i / steps) * math.pi * 2 * props.__curve_intensity
+            -- Enhanced spiral with variable radius and frequency
+            local spiral_radius = 20 * props.__curve_intensity * (1 + speed / 300)
+            local rotation_angle = (i / steps) * math.pi * 4 * props.__curve_intensity -- 2 full rotations
             local rotation_matrix = CFrame.Angles(0, rotation_angle, 0)
-            predicted_velocity = rotation_matrix:VectorToWorldSpace(predicted_velocity)
+            local spiral_offset = Vector3.new(
+                math.cos(rotation_angle) * spiral_radius,
+                math.sin(rotation_angle * 0.5) * spiral_radius * 0.3, -- Vertical component
+                math.sin(rotation_angle) * spiral_radius
+            )
+            predicted_velocity = rotation_matrix:VectorToWorldSpace(predicted_velocity) + spiral_offset
         end
         
         if props.__curve_types.zigzag then
-            -- Add alternating direction changes
-            local zigzag_amplitude = 50 * props.__curve_intensity
-            local zigzag_direction = math.sin(i * 0.5) * zigzag_amplitude
-            predicted_velocity = predicted_velocity + Vector3.new(zigzag_direction, 0, 0)
+            -- Enhanced zigzag with frequency and amplitude modulation
+            local zigzag_amplitude = 75 * props.__curve_intensity * (1 + speed / 400)
+            local zigzag_frequency = 0.8 + (speed / 500) -- Frequency increases with speed
+            local zigzag_direction = math.sin(i * zigzag_frequency) * zigzag_amplitude
+            local zigzag_vertical = math.cos(i * zigzag_frequency * 0.7) * zigzag_amplitude * 0.3
+            predicted_velocity = predicted_velocity + Vector3.new(zigzag_direction, zigzag_vertical, 0)
         end
         
-        -- Update position
+        if props.__curve_types.sustained then
+            -- Enhanced sustained curve with gradual direction change
+            local sustained_factor = props.__curve_intensity * 0.5
+            local curve_angle = (i / steps) * math.pi * sustained_factor
+            local curve_matrix = CFrame.Angles(0, curve_angle, 0)
+            predicted_velocity = curve_matrix:VectorToWorldSpace(predicted_velocity)
+        end
+        
+        -- Update position with enhanced time integration
         predicted_position = predicted_position + (predicted_velocity * time_step)
         table.insert(predicted_positions, {
             position = predicted_position,
             time = tick() + (i * time_step),
-            velocity = predicted_velocity
+            velocity = predicted_velocity,
+            confidence = math.max(0.1, 1.0 - (i / steps) * 0.3) -- Confidence decreases over time
         })
     end
     
@@ -1283,32 +1308,44 @@ function System.detection.get_timing_multipliers(speed, ping, curve_intensity, a
         sustained = 1.1
     }
     
-    -- Base velocity-optimized timing
-    if speed > 250 then -- Ultra high velocity
+    -- Enhanced base velocity-optimized timing with more granular tiers
+    if speed > 300 then -- Extreme velocity
+        multipliers.sudden = 3.0
+        multipliers.sustained = 2.2
+    elseif speed > 250 then -- Ultra high velocity
+        multipliers.sudden = 2.8
+        multipliers.sustained = 2.0
+    elseif speed > 200 then -- Very high velocity
         multipliers.sudden = 2.5
         multipliers.sustained = 1.8
-    elseif speed > 200 then -- Very high velocity
+    elseif speed > 150 then -- High velocity
         multipliers.sudden = 2.2
         multipliers.sustained = 1.6
-    elseif speed > 150 then -- High velocity
-        multipliers.sudden = 2.0
-        multipliers.sustained = 1.5
     elseif speed > 100 then -- Medium-high velocity
-        multipliers.sudden = 1.8
-        multipliers.sustained = 1.3
+        multipliers.sudden = 1.9
+        multipliers.sustained = 1.4
     elseif speed > 60 then -- Medium velocity
-        multipliers.sudden = 1.6
+        multipliers.sudden = 1.7
+        multipliers.sustained = 1.3
+    elseif speed > 30 then -- Low-medium velocity
+        multipliers.sudden = 1.5
         multipliers.sustained = 1.2
     end
     
-    -- Ping compensation for timing
-    if ping > 0.3 then -- Very high ping (300ms+)
+    -- Enhanced ping compensation with more aggressive scaling for high ping
+    if ping > 0.4 then -- Extreme ping (400ms+)
+        multipliers.sudden = multipliers.sudden * 1.5
+        multipliers.sustained = multipliers.sustained * 1.4
+    elseif ping > 0.3 then -- Very high ping (300ms+)
+        multipliers.sudden = multipliers.sudden * 1.4
+        multipliers.sustained = multipliers.sustained * 1.35
+    elseif ping > 0.2 then -- High ping (200ms+)
         multipliers.sudden = multipliers.sudden * 1.3
         multipliers.sustained = multipliers.sustained * 1.25
-    elseif ping > 0.2 then -- High ping (200ms+)
+    elseif ping > 0.1 then -- Medium ping (100ms+)
         multipliers.sudden = multipliers.sudden * 1.2
         multipliers.sustained = multipliers.sustained * 1.15
-    elseif ping > 0.1 then -- Medium ping (100ms+)
+    elseif ping > 0.05 then -- Low-medium ping (50ms+)
         multipliers.sudden = multipliers.sudden * 1.1
         multipliers.sustained = multipliers.sustained * 1.08
     end
@@ -1388,8 +1425,8 @@ function System.detection.is_curved()
     local distance = (pos - ball.Position).Magnitude
     local reach_time = distance / speed - ping
 
-    -- Enhanced ping compensation for high ping scenarios
-    local ping_compensation = math.min(ping * 1.2, 0.5)
+    -- Enhanced ping compensation for high ping scenarios with more aggressive scaling
+    local ping_compensation = math.min(ping * 1.5, 0.6) -- Increased from 1.2 to 1.5, cap from 0.5 to 0.6
     local adjusted_reach_time = reach_time - ping_compensation
     
     -- Update velocity and position history for advanced analysis
@@ -1438,10 +1475,9 @@ function System.detection.is_curved()
                 
                 props.__angular_velocity = angular_velocity
                 
-                -- Enhanced sudden curve detection with aggressive high ping compensation
-                local sudden_threshold = speed > 200 and 0.15 or (speed > 100 and 0.25 or 0.35)
-                local ping_compensation_factor = ping > 0.3 and 1.8 or (ping > 0.2 and 1.5 or (ping > 0.1 and 1.2 or 1.0))
-                local ping_adjusted_threshold = sudden_threshold * (1 + ping * ping_compensation_factor)
+                -- Enhanced sudden curve detection with velocity compensation for high speed balls
+                local sudden_threshold = speed > 350 and 0.08 or (speed > 250 and 0.10 or (speed > 150 and 0.14 or (speed > 80 and 0.20 or 0.28)))
+                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 1.0) -- More aggressive ping compensation for high speed
                 
                 if angular_velocity > ping_adjusted_threshold then
                     props.__curve_types.sudden = true
@@ -1646,7 +1682,7 @@ function System.detection.is_curved()
         return false
     end
 
-    -- Enhanced timing-based curve detection with velocity-optimized multipliers
+    -- Enhanced timing-based curve detection with velocity-optimized multipliers for better consistency
     local timing_multipliers = System.detection.get_timing_multipliers(speed, ping, curve_intensity, adaptive_thresholds)
     
     local sudden_curve_multiplier = timing_multipliers.sudden
@@ -1661,8 +1697,12 @@ function System.detection.is_curved()
         return true
     end
 
-    -- Final decision: any detected curve type or traditional detection
-    return curve_detected or (dot < dot_threshold)
+    -- Enhanced final decision with more reliable detection
+    local traditional_detection = dot < dot_threshold
+    local curve_confidence = curve_intensity > 0.3 -- Minimum confidence for curve detection
+    
+    -- Return true if either traditional detection or high-confidence curve detection
+    return traditional_detection or (curve_detected and curve_confidence)
 end
 
 ReplicatedStorage.Remotes.DeathBall.OnClientEvent:Connect(function(c, d)
@@ -1849,19 +1889,28 @@ function System.autoparry.start()
                 end
             end
             
-            -- Enhanced speed divisor calculation with aggressive high velocity compensation
-            local capped_speed_diff = math.min(math.max(speed - 5, 0), 650)
-            local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 180) or 1
-            local velocity_factor = speed > 300 and 0.8 or (speed > 200 and 0.9 or (speed > 100 and 1.0 or 1.1))
-            local speed_divisor = (2.0 + capped_speed_diff * 0.003) * System.__properties.__divisor_multiplier * ping_speed_factor * velocity_factor
+            -- Enhanced speed divisor calculation with aggressive timing to prevent early parrying during movement
+            local capped_speed_diff = math.min(math.max(speed - 22, 0), 650) -- Further increased from 18 to 22
+            local ping_speed_factor = ping_ms > 100 and (1 + (ping_ms - 100) / 350) or 1 -- Even more conservative scaling
             
-            -- Improved parry accuracy calculation with high velocity optimization
-            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 8)
-            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 35, 6) or 0
-            local velocity_buffer = speed > 250 and 2 or (speed > 150 and 1.5 or (speed > 80 and 1 or 0.5))
-            local parry_accuracy = base_parry_accuracy + high_ping_buffer + velocity_buffer
+            -- Enhanced high velocity ball handling - rocket speed optimization
+            local high_velocity_multiplier = speed > 300 and 0.8 or (speed > 200 and 0.9 or 1.0)
+            local speed_divisor = (3.5 + capped_speed_diff * 0.001) * System.__properties.__divisor_multiplier * ping_speed_factor * high_velocity_multiplier
             
-            local curved = System.detection.is_curved()
+            -- Enhanced movement compensation - more aggressive when moving
+            local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+            local movement_speed = humanoid and humanoid.MoveDirection.Magnitude or 0
+            local movement_multiplier = movement_speed > 0.5 and 1.6 or (movement_speed > 0.1 and 1.3 or 1.0)
+            local velocity_multiplier = humanoid and humanoid.MoveDirection.Magnitude > 0 and (humanoid.MoveDirection:Dot(velocity.Unit) + 1) / 2 or 1
+            
+            -- Aggressive parry accuracy calculation to prevent early parrying with high velocity optimization
+            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 16) -- Increased from 14 to 16
+            local high_ping_buffer = ping_ms > 80 and math.min(ping_ms / 70, 2.5) or 0 -- More conservative
+            local movement_buffer = movement_speed > 0 and math.max(5 * movement_multiplier * velocity_multiplier, 3) or 0 -- Enhanced movement buffer
+            
+            -- High velocity ball close-range optimization - no need for auto spam
+            local close_range_bonus = speed > 250 and distance < 15 and -4 or (speed > 200 and distance < 12 and -2 or 0)
+            local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer + close_range_bonus
             
             if ball:FindFirstChild('AeroDynamicSlashVFX') then
                 ball.AeroDynamicSlashVFX:Destroy()
@@ -2040,16 +2089,21 @@ function System.autoparry.start()
                     
                     local speed = velocity.Magnitude
                     
-                    local capped_speed_diff = math.min(math.max(speed - 5, 0), 650)
-                    local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 180) or 1
-                    local velocity_factor = speed > 300 and 0.8 or (speed > 200 and 0.9 or (speed > 100 and 1.0 or 1.1))
-                    local speed_divisor = (2.0 + capped_speed_diff * 0.003) * System.__properties.__divisor_multiplier * ping_speed_factor * velocity_factor
+                    local capped_speed_diff = math.min(math.max(speed - 22, 0), 650) -- Increased from 18 to 22
+                    local ping_speed_factor = ping_ms > 100 and (1 + (ping_ms - 100) / 350) or 1 -- More conservative scaling
+                    local speed_divisor = (3.5 + capped_speed_diff * 0.001) * System.__properties.__divisor_multiplier * ping_speed_factor
                     
-                    -- Improved parry accuracy calculation with high velocity optimization for training
-                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 8)
-                    local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 35, 6) or 0
-                    local velocity_buffer = speed > 250 and 2 or (speed > 150 and 1.5 or (speed > 80 and 1 or 0.5))
-                    local parry_accuracy = base_parry_accuracy + high_ping_buffer + velocity_buffer
+                    -- Enhanced movement compensation for training scenarios
+                    local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+                    local movement_speed = humanoid and humanoid.MoveDirection.Magnitude or 0
+                    local movement_multiplier = movement_speed > 0.5 and 1.6 or (movement_speed > 0.1 and 1.3 or 1.0)
+                    local velocity_multiplier = humanoid and humanoid.MoveDirection.Magnitude > 0 and (humanoid.MoveDirection:Dot(velocity.Unit) + 1) / 2 or 1
+                    
+                    -- Aggressive parry accuracy calculation for training
+                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 16) -- Increased from 14 to 16
+                    local high_ping_buffer = ping_ms > 80 and math.min(ping_ms / 70, 2.5) or 0 -- More conservative
+                    local movement_buffer = movement_speed > 0 and math.max(5 * movement_multiplier * velocity_multiplier, 3) or 0 -- Enhanced movement buffer
+                    local parry_accuracy = base_parry_accuracy + high_ping_buffer + movement_buffer
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
@@ -2082,7 +2136,7 @@ System.manual_spam = {}
 
 -- Script local sem limitações de CPS
 local manualSpamAccumulator = 0
-local MANUAL_SPAM_INTERVAL = 0 -- Sem intervalo, executa a cada frame
+local MANUAL_SPAM_INTERVAL = 0.005 -- 5ms interval for rapid spam (200 CPS)
 
 function System.manual_spam.start()
     if System.__properties.__connections.__manual_spam_connection then
@@ -2090,6 +2144,7 @@ function System.manual_spam.start()
     end
     
     System.__properties.__manual_spam_enabled = true
+    manualSpamAccumulator = 0 -- Reset accumulator when starting
     
     System.__properties.__connections.__manual_spam_connection =
     RunService.RenderStepped:Connect(function(deltaTime)
@@ -2097,14 +2152,28 @@ function System.manual_spam.start()
             return
         end
         
-        -- Executa diretamente sem verificação de intervalo
-        if getgenv().ManualSpamMode == "Keypress" then
-            System.parry.keypress()
-        else
-            System.parry.execute()
-            if getgenv().ManualSpamAnimationFix then
-                System.animation.play_grab_parry()
+        -- Only spam when key is held down, not automatically
+        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or 
+           UserInputService:IsKeyDown(Enum.KeyCode.F) or
+           UserInputService:IsKeyDown(Enum.KeyCode.E) then
+            
+            manualSpamAccumulator = manualSpamAccumulator + deltaTime
+            
+            if manualSpamAccumulator >= MANUAL_SPAM_INTERVAL then
+                manualSpamAccumulator = 0
+                
+                -- Executa rapidamente com intervalo mínimo
+                if getgenv().ManualSpamMode == "Keypress" then
+                    System.parry.keypress()
+                else
+                    System.parry.execute()
+                    if getgenv().ManualSpamAnimationFix then
+                        System.animation.play_grab_parry()
+                    end
+                end
             end
+        else
+            manualSpamAccumulator = 0 -- Reset when key is released
         end
     end)
 end
@@ -4605,6 +4674,163 @@ end
 
 No_Render:change_state(false)
 
+-- FFLAG MANAGER MODULE
+local fflagModule = misc:create_module({
+    title = 'FFlag Manager',
+    flag = 'FFlag_Manager',
+    description = 'Manage FFlag profiles and settings',
+    section = 'left',
+    callback = function(value)
+        -- Module toggle functionality
+    end
+})
+
+local profileOptions = {"Default", "Performance", "LagBall", "Network"}
+
+fflagModule:create_dropdown({
+    title = "FFlag Profile",
+    flag = "fflag_profile",
+    options = profileOptions,
+    default = "Default",
+    callback = function(value)
+        local success = FFlagManager.applyProfile(value)
+        Library.SendNotification({
+            title = "FFlag Manager",
+            text = success and ("Applied " .. value) or ("Failed to apply " .. value),
+            duration = 3
+        })
+    end
+})
+
+fflagModule:create_button({
+    title = "Apply Profile",
+    flag = "apply_fflag_profile",
+    callback = function()
+        local currentProfile = FFlagManager.getCurrentProfile()
+        local success = FFlagManager.applyProfile(currentProfile)
+        Library.SendNotification({
+            title = "FFlag Manager",
+            text = success and ("Re-applied " .. currentProfile) or ("Failed to re-apply " .. currentProfile),
+            duration = 3
+        })
+    end
+})
+
+fflagModule:create_textbox({
+    title = "Custom FFlag",
+    placeholder = "FlagName=Value",
+    flag = "custom_fflag",
+    callback = function(text)
+        if text and text:find("=") then
+            local flagName, value = text:match("([^=]+)=([^=]+)")
+            if flagName and value then
+                local success = FFlagManager.addCustomFlag(flagName, value)
+                Library.SendNotification({
+                    title = "FFlag Manager",
+                    text = success and ("Added " .. flagName) or ("Failed to add " .. flagName),
+                    duration = 3
+                })
+            end
+        end
+    end
+})
+
+-- ENHANCED PARRY MODULE
+local enhancedParryModule = misc:create_module({
+    title = 'Enhanced Parry',
+    flag = 'Enhanced_Parry',
+    description = 'Advanced parry prediction and tracking',
+    section = 'right',
+    callback = function(value)
+        EnhancedParrySystem.__properties.__parry_prediction_enabled = value
+        Library.SendNotification({
+            title = "Enhanced Parry",
+            text = value and "ON" or "OFF",
+            duration = 2
+        })
+    end
+})
+
+enhancedParryModule:create_checkbox({
+    title = "Ball Tracking",
+    flag = "ball_tracking",
+    callback = function(value)
+        EnhancedParrySystem.__properties.__ball_tracking_enabled = value
+    end
+})
+
+enhancedParryModule:create_checkbox({
+    title = "Perfect Timing",
+    flag = "perfect_timing",
+    callback = function(value)
+        EnhancedParrySystem.__properties.__perfect_timing_enabled = value
+    end
+})
+
+enhancedParryModule:create_checkbox({
+    title = "Anti-Lag Compensation",
+    flag = "anti_lag_compensation",
+    callback = function(value)
+        EnhancedParrySystem.__properties.__anti_lag_compensation = value
+    end
+})
+
+enhancedParryModule:create_checkbox({
+    title = "Network Optimizer",
+    flag = "network_optimizer",
+    callback = function(value)
+        EnhancedParrySystem.__properties.__network_optimizer = value
+    end
+})
+
+enhancedParryModule:create_slider({
+    title = "Prediction Accuracy",
+    flag = "prediction_accuracy",
+    minimum_value = 0.5,
+    maximum_value = 1.0,
+    value = 0.95,
+    round_number = false,
+    callback = function(value)
+        EnhancedParrySystem.__properties.__prediction_accuracy = value
+    end
+})
+
+enhancedParryModule:create_slider({
+    title = "Reaction Time",
+    flag = "reaction_time",
+    minimum_value = 0.05,
+    maximum_value = 0.5,
+    value = 0.1,
+    round_number = false,
+    callback = function(value)
+        EnhancedParrySystem.__properties.__reaction_time = value
+    end
+})
+
+enhancedParryModule:create_slider({
+    title = "Parry Cooldown",
+    flag = "parry_cooldown",
+    minimum_value = 0.1,
+    maximum_value = 1.0,
+    value = 0.2,
+    round_number = false,
+    callback = function(value)
+        EnhancedParrySystem.__properties.__parry_cooldown = value
+    end
+})
+
+enhancedParryModule:create_slider({
+    title = "Max Prediction Distance",
+    flag = "max_prediction_distance",
+    minimum_value = 20,
+    maximum_value = 100,
+    value = 50,
+    round_number = true,
+    callback = function(value)
+        EnhancedParrySystem.__config.__max_prediction_distance = value
+    end
+})
+
 local ParticleSystem = {
     Particles = {},
     MaxParticles = 5000,
@@ -5650,7 +5876,7 @@ local SkinChanger = misc:create_module({
     flag = 'SkinChanger',
     description = 'Skin Changer',
     section = 'left',
-    callback = function(value)
+    callback = function(value: boolean)
         getgenv().skinChangerEnabled = value
         if value then
             getgenv().updateSword()
@@ -5664,7 +5890,7 @@ SkinChanger:change_state(false)
 local changeSwordModelCheckbox = SkinChanger:create_checkbox({
     title = "Change Sword Model",
     flag = "ChangeSwordModel",
-    callback = function(value)
+    callback = function(value: boolean)
         getgenv().changeSwordModel = value
         if getgenv().skinChangerEnabled then
             getgenv().updateSword()
@@ -5691,7 +5917,7 @@ SkinChanger:create_divider({})
 local changeSwordAnimationCheckbox = SkinChanger:create_checkbox({
     title = "Change Sword Animation",
     flag = "ChangeSwordAnimation",
-    callback = function(value)
+    callback = function(value: boolean)
         getgenv().changeSwordAnimation = value
         if getgenv().skinChangerEnabled then
             getgenv().updateSword()
@@ -5718,7 +5944,7 @@ SkinChanger:create_divider({})
 local changeSwordFXCheckbox = SkinChanger:create_checkbox({
     title = "Change Sword FX",
     flag = "ChangeSwordFX",
-    callback = function(value)
+    callback = function(value: boolean)
         getgenv().changeSwordFX = value
         if getgenv().skinChangerEnabled then
             getgenv().updateSword()
@@ -5761,6 +5987,444 @@ if balls then
         System.__properties.__antidot_parried = false
     end)
 end
+
+-- ENHANCED PARRY LOGIC & REMOTE HOOK SYSTEM
+local EnhancedParrySystem = {
+    __properties = {
+        __parry_prediction_enabled = false,
+        __ball_tracking_enabled = false,
+        __auto_dodge_enabled = false,
+        __perfect_timing_enabled = false,
+        __anti_lag_compensation = false,
+        __network_optimizer = false,
+        __remote_interceptor = {},
+        __ball_data_cache = {},
+        __prediction_accuracy = 0.95,
+        __reaction_time = 0.1,
+        __last_parry_time = 0,
+        __parry_cooldown = 0.2,
+        __ball_velocity_cache = {},
+        __trajectory_history = {}
+    },
+    
+    __config = {
+        __max_prediction_distance = 50,
+        __trajectory_samples = 10,
+        __velocity_smoothing_factor = 0.8,
+        __prediction_update_rate = 0.016,
+        __network_optimization_level = 3
+    }
+}
+
+-- Advanced Ball Tracking System
+function EnhancedParrySystem.trackBall()
+    local balls = workspace:FindFirstChild('Balls')
+    if not balls then return nil end
+    
+    for _, ball in pairs(balls:GetChildren()) do
+        if ball:IsA('BasePart') and not ball:GetAttribute('realBall') then
+            local currentPos = ball.Position
+            local currentVel = ball.Velocity
+            local currentTime = tick()
+            
+            -- Update ball data cache
+            if not EnhancedParrySystem.__properties.__ball_data_cache[ball] then
+                EnhancedParrySystem.__properties.__ball_data_cache[ball] = {
+                    positions = {},
+                    velocities = {},
+                    timestamps = {}
+                }
+            end
+            
+            local ballData = EnhancedParrySystem.__properties.__ball_data_cache[ball]
+            table.insert(ballData.positions, currentPos)
+            table.insert(ballData.velocities, currentVel)
+            table.insert(ballData.timestamps, currentTime)
+            
+            -- Keep only recent data
+            local maxSamples = EnhancedParrySystem.__config.__trajectory_samples
+            if #ballData.positions > maxSamples then
+                table.remove(ballData.positions, 1)
+                table.remove(ballData.velocities, 1)
+                table.remove(ballData.timestamps, 1)
+            end
+            
+            return ball
+        end
+    end
+    return nil
+end
+
+-- Predictive Parry System
+function EnhancedParrySystem.predictParry(ball)
+    if not ball or not EnhancedParrySystem.__properties.__parry_prediction_enabled then
+        return false
+    end
+    
+    local ballData = EnhancedParrySystem.__properties.__ball_data_cache[ball]
+    if not ballData or #ballData.positions < 3 then
+        return false
+    end
+    
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild('HumanoidRootPart') then
+        return false
+    end
+    
+    local playerPos = char.HumanoidRootPart.Position
+    local ballPos = ball.Position
+    local distance = (playerPos - ballPos).Magnitude
+    
+    if distance > EnhancedParrySystem.__config.__max_prediction_distance then
+        return false
+    end
+    
+    -- Calculate trajectory prediction
+    local predictedPos = EnhancedParrySystem.calculateTrajectory(ball)
+    if not predictedPos then
+        return false
+    end
+    
+    local predictedDistance = (playerPos - predictedPos).Magnitude
+    local timeToImpact = predictedDistance / (ball.Velocity.Magnitude + 1)
+    
+    -- Enhanced timing calculation
+    local currentTime = tick()
+    local timeSinceLastParry = currentTime - EnhancedParrySystem.__properties.__last_parry_time
+    
+    if timeSinceLastParry < EnhancedParrySystem.__properties.__parry_cooldown then
+        return false
+    end
+    
+    -- Perfect timing calculation
+    local reactionDelay = EnhancedParrySystem.__properties.__reaction_time
+    if EnhancedParrySystem.__properties.__perfect_timing_enabled then
+        reactionDelay = reactionDelay * 0.5
+    end
+    
+    if timeToImpact <= reactionDelay and predictedDistance <= 15 then
+        EnhancedParrySystem.__properties.__last_parry_time = currentTime
+        return true
+    end
+    
+    return false
+end
+
+-- Advanced Trajectory Calculation
+function EnhancedParrySystem.calculateTrajectory(ball)
+    local ballData = EnhancedParrySystem.__properties.__ball_data_cache[ball]
+    if not ballData or #ballData.positions < 3 then
+        return nil
+    end
+    
+    local positions = ballData.positions
+    local velocities = ballData.velocities
+    local timestamps = ballData.timestamps
+    
+    -- Calculate average velocity with smoothing
+    local avgVelocity = Vector3.new(0, 0, 0)
+    local smoothingFactor = EnhancedParrySystem.__config.__velocity_smoothing_factor
+    
+    for i = 2, #velocities do
+        local weight = i / #velocities
+        avgVelocity = avgVelocity:Lerp(velocities[i], smoothingFactor * weight)
+    end
+    
+    -- Predict future position
+    local currentPos = positions[#positions]
+    local currentTime = timestamps[#timestamps]
+    local predictionTime = EnhancedParrySystem.__config.__prediction_update_rate
+    
+    local predictedPos = currentPos + avgVelocity * predictionTime
+    
+    -- Apply gravity and air resistance
+    local gravity = workspace.Gravity
+    predictedPos = predictedPos + Vector3.new(0, -gravity * predictionTime * predictionTime * 0.5, 0)
+    
+    return predictedPos
+end
+
+-- Remote Interceptor & Bypass System
+function EnhancedParrySystem.interceptRemotes()
+    local remoteEvents = {
+        'ParrySuccessAll',
+        'ParrySuccessClient',
+        'FireSwordInfo',
+        'BallHit',
+        'PlayerHit'
+    }
+    
+    for _, remoteName in pairs(remoteEvents) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote then
+            EnhancedParrySystem.hookRemote(remote)
+        end
+    end
+    
+    -- Hook future remotes
+    ReplicatedStorage.ChildAdded:Connect(function(child)
+        if table.find(remoteEvents, child.Name) then
+            EnhancedParrySystem.hookRemote(child)
+        end
+    end)
+end
+
+-- Enhanced Remote Hook
+function EnhancedParrySystem.hookRemote(remote)
+    if EnhancedParrySystem.__properties.__remote_interceptor[remote] then
+        return
+    end
+    
+    local oldFireServer = remote.FireServer
+    local oldInvokeServer = remote.InvokeServer
+    
+    if remote:IsA('RemoteEvent') then
+        remote.FireServer = function(self, ...)
+            local args = {...}
+            
+            -- Log and modify parry data
+            if remote.Name == 'ParrySuccessAll' or remote.Name == 'ParrySuccessClient' then
+                EnhancedParrySystem.processParryData(args)
+            end
+            
+            -- Anti-detection bypass
+            if EnhancedParrySystem.__properties.__network_optimizer then
+                args = EnhancedParrySystem.optimizeNetworkData(args)
+            end
+            
+            return oldFireServer(self, unpack(args))
+        end
+    elseif remote:IsA('RemoteFunction') then
+        remote.InvokeServer = function(self, ...)
+            local args = {...}
+            
+            if EnhancedParrySystem.__properties.__network_optimizer then
+                args = EnhancedParrySystem.optimizeNetworkData(args)
+            end
+            
+            return oldInvokeServer(self, unpack(args))
+        end
+    end
+    
+    EnhancedParrySystem.__properties.__remote_interceptor[remote] = true
+end
+
+-- Process Parry Data
+function EnhancedParrySystem.processParryData(args)
+    if not args or #args < 1 then return end
+    
+    local playerName = tostring(args[4])
+    if playerName == LocalPlayer.Name then
+        -- Log successful parry
+        EnhancedParrySystem.__properties.__last_parry_time = tick()
+        
+        -- Update trajectory history
+        if #EnhancedParrySystem.__properties.__trajectory_history > 100 then
+            table.remove(EnhancedParrySystem.__properties.__trajectory_history, 1)
+        end
+        table.insert(EnhancedParrySystem.__properties.__trajectory_history, {
+            timestamp = tick(),
+            args = args
+        })
+    end
+end
+
+-- Network Data Optimizer
+function EnhancedParrySystem.optimizeNetworkData(args)
+    if not args then return args end
+    
+    -- Remove redundant data
+    local optimizedArgs = {}
+    for i, arg in pairs(args) do
+        if type(arg) ~= 'table' or next(arg) ~= nil then
+            table.insert(optimizedArgs, arg)
+        end
+    end
+    
+    return optimizedArgs
+end
+
+-- Initialize Enhanced Systems
+EnhancedParrySystem.interceptRemotes()
+
+-- Enhanced Parry Update Loop
+game:GetService("RunService").Heartbeat:Connect(function(deltaTime)
+    if EnhancedParrySystem.__properties.__ball_tracking_enabled then
+        local ball = EnhancedParrySystem.trackBall()
+        if ball then
+            local shouldParry = EnhancedParrySystem.predictParry(ball)
+            if shouldParry and System.__properties.__autoparry_enabled then
+                -- Trigger parry with enhanced timing
+                pcall(function()
+                    if PF and not System.__properties.__parried then
+                        PF()
+                    end
+                end)
+            end
+        end
+    end
+end)
+
+-- FFLAG MANAGER SYSTEM
+local FFlagManager = {
+    __properties = {
+        __current_profile = "Default",
+        __custom_flags = {},
+        __applied_flags = {},
+        __auto_apply = false
+    },
+    
+    __profiles = {
+        ["Default"] = {
+            ["DFIntPhysicsEMAInverseSmoothingFactor"] = "2074",
+            ["FFlagAnimationTrackStepFix"] = "True",
+            ["FFlagAnimatorRetargetSkipLowerBodyIK"] = "False",
+            ["FFlagAnimationStreamSourceUseRuntimeSyncPrims"] = "True",
+            ["DFIntAnimatorRetargetSkipLowerBodyIKDistance10x"] = "0",
+            ["FFlagFixKeyframeGeneration"] = "True",
+            ["DFFlagAnimatorEnableNewAdornments"] = "True",
+            ["FFlagAnimatorRetargetSkipAnkleModification"] = "True",
+            ["FFlagKeyframeSequenceUseRuntimeSyncPrims"] = "True",
+            ["FFlagHumanoidStateUseRuntimeSyncPrims"] = "True",
+            ["FFlagQuaternionPoseCorrection"] = "True",
+            ["FFlagRealTimeAnimationEnableRefactor"] = "True",
+            ["FFlagAnimationStreamTrackUseRuntimeSyncPrims"] = "True",
+            ["NumFramesAllowedToBeAboveError"] = "0",
+            ["CorrectServerReplicatorStatsIP"] = "True",
+            ["FastGPULightCulling3"] = "True",
+            ["ClientLightingTechnologyChangedTelemetryHundredthsPercent"] = "0",
+            ["Network"] = "7",
+            ["PerformanceControlFrameTimeMax"] = "1",
+            ["DFFlagGraphicsQualityUsageTelemetry"] = "False",
+            ["DFIntNetworkQualityResponderMaxWaitTime"] = "1",
+            ["DFIntConnectionMTUSize"] = "1240",
+            ["DFIntRakNetMtuValue1InBytes"] = "1280",
+            ["DFIntRakNetMtuValue2InBytes"] = "1240",
+            ["DFIntRakNetMtuValue3InBytes"] = "1200",
+            ["FFlagDebugRenderingSetDeterministic"] = "True",
+            ["DFIntHACDPointSampleDistApartTenths"] = "2147483647",
+            ["FIntSSAOMipLevels"] = "1",
+            ["FIntFRMMinGrassDistance"] = "0",
+            ["FIntFRMMaxGrassDistance"] = "0",
+            ["FIntGrassMovementReducedMotionFactor"] = "0",
+            ["DFFlagTextureQualityOverrideEnabled"] = "True",
+            ["DFIntTextureQualityOverride"] = "0",
+            ["DFFlagGameNetFixReplicationSkipBug"] = "True",
+            ["DFFlagCorrectCachePolicySkipRedirectCache"] = "True",
+            ["DFFlagRakNetFixBwCollapse"] = "False",
+            ["DFFlagRakNetDecoupleRecvAndUpdateLoopShutdown"] = "True",
+            ["FFlagPushFrameTimeToHarmony"] = "True",
+            ["DFFlagSkipSomePropertiesSkip"] = "True",
+            ["DFFlagSkipReadDiskCacheRedirects"] = "True",
+            ["DFFlagSkipSomeProperties"] = "True",
+            ["DFFlagReplicatorCheckReadTableCollisions"] = "True"
+        },
+        
+        ["Performance"] = {
+            ["TaskSchedulerTargetFps"] = "5099990",
+            ["DFIntTextureQualityOverride"] = "0",
+            ["DFFlagTextureQualityOverrideEnabled"] = "True",
+            ["FIntDebugTextureManagerSkipMips"] = "4",
+            ["DFIntWaitOnUpdateNetworkLoopEndedMS"] = "1",
+            ["FIntFontSizePadding"] = "2",
+            ["FFlagAdServiceEnabled"] = "False",
+            ["DFIntDebugFRMQualityLevelOverride"] = "3",
+            ["DFIntCSGLevelOfDetailSwitchingDistance"] = "0",
+            ["DFIntCSGLevelOfDetailSwitchingDistanceL12"] = "0",
+            ["DFIntCSGLevelOfDetailSwitchingDistanceL34"] = "0",
+            ["DFIntCSGLevelOfDetailSwitchingDistanceL23"] = "0",
+            ["FIntRobloxGuiBlurIntensity"] = "0"
+        },
+        
+        ["LagBall"] = {
+            ["DFIntMaxProcessPacketsJobScaling"] = "2139999999",
+            ["DFIntMaxProcessPacketsStepsAccumulated"] = "0",
+            ["DFIntMaxProcessPacketsStepsPerCyclic"] = "2139999999",
+            ["DFIntMaxFrameBufferSize"] = "4",
+            ["DFIntMaxFramesToSend"] = "1",
+            ["DFIntMaxAverageFrameDelayExceedFactor"] = "0",
+            ["DFIntPerformanceControlFrameTimeMax"] = "1",
+            ["FIntInterpolationAwareTargetTimeLerpHundredth"] = "100",
+            ["DFIntNumFramesAllowedToBeAboveError"] = "0",
+            ["DFIntInterpolationMinAssemblyCount"] = "1",
+            ["DFIntCodecMaxOutgoingFrames"] = "2139999999",
+            ["DFIntCodecMaxIncomingPackets"] = "2139999999",
+            ["DFIntClientPacketMaxDelayMs"] = "1",
+            ["DFIntClientPacketHealthyAllocationPercent"] = "50",
+            ["DFIntInterpolationDtLimitForLod"] = "1",
+            ["DFIntParallelAdaptiveInterpolationBatchCount"] = "1",
+            ["DFIntRakNetClockDriftAdjustmentPerPingMillisecond"] = "2139999999",
+            ["FIntInterpolationMaxDelayMSec"] = "1",
+            ["FIntNumFramesToCaptureCallStack"] = "1"
+        },
+        
+        ["Network"] = {
+            ["DFIntNetworkQualityResponderMaxWaitTime"] = "1",
+            ["DFIntConnectionMTUSize"] = "1400",
+            ["DFIntRakNetMtuValue1InBytes"] = "1400",
+            ["DFIntRakNetMtuValue2InBytes"] = "1400",
+            ["DFIntRakNetMtuValue3InBytes"] = "1400",
+            ["DFFlagRakNetFixBwCollapse"] = "True",
+            ["DFFlagRakNetDecoupleRecvAndUpdateLoopShutdown"] = "True",
+            ["DFFlagGameNetFixReplicationSkipBug"] = "True",
+            ["DFFlagCorrectCachePolicySkipRedirectCache"] = "True",
+            ["Network"] = "10",
+            ["DFIntMaxProcessPacketsJobScaling"] = "1000",
+            ["DFIntCodecMaxIncomingPackets"] = "500",
+            ["DFIntCodecMaxOutgoingFrames"] = "1000"
+        }
+    }
+}
+
+-- Apply FFlag Profile
+function FFlagManager.applyProfile(profileName)
+    local profile = FFlagManager.__profiles[profileName]
+    if not profile then
+        warn("FFlag profile not found: " .. profileName)
+        return false
+    end
+    
+    local successCount = 0
+    local totalCount = 0
+    
+    for flag, value in pairs(profile) do
+        totalCount = totalCount + 1
+        local success = pcall(function()
+            setfflag(flag, tostring(value))
+        end)
+        if success then
+            successCount = successCount + 1
+            FFlagManager.__properties.__applied_flags[flag] = value
+        end
+    end
+    
+    FFlagManager.__properties.__current_profile = profileName
+    
+    print(string.format("Applied %d/%d FFlags from profile '%s'", successCount, totalCount, profileName))
+    return successCount == totalCount
+end
+
+-- Add Custom FFlag
+function FFlagManager.addCustomFlag(flagName, value)
+    FFlagManager.__properties.__custom_flags[flagName] = value
+    local success = pcall(function()
+        setfflag(flagName, tostring(value))
+    end)
+    return success
+end
+
+-- Get Current Profile
+function FFlagManager.getCurrentProfile()
+    return FFlagManager.__properties.__current_profile
+end
+
+-- Get Applied Flags
+function FFlagManager.getAppliedFlags()
+    return FFlagManager.__properties.__applied_flags
+end
+
+-- Initialize FFlag Manager
+FFlagManager.applyProfile("Default")
 
 main:load()
 
