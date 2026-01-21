@@ -1438,9 +1438,10 @@ function System.detection.is_curved()
                 
                 props.__angular_velocity = angular_velocity
                 
-                -- Enhanced sudden curve detection with velocity compensation
+                -- Enhanced sudden curve detection with aggressive high ping compensation
                 local sudden_threshold = speed > 200 and 0.15 or (speed > 100 and 0.25 or 0.35)
-                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 0.5)
+                local ping_compensation_factor = ping > 0.3 and 1.8 or (ping > 0.2 and 1.5 or (ping > 0.1 and 1.2 or 1.0))
+                local ping_adjusted_threshold = sudden_threshold * (1 + ping * ping_compensation_factor)
                 
                 if angular_velocity > ping_adjusted_threshold then
                     props.__curve_types.sudden = true
@@ -1848,15 +1849,17 @@ function System.autoparry.start()
                 end
             end
             
-            -- Enhanced speed divisor calculation with ping compensation
-            local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-            local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
-            local speed_divisor = (2.5 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
+            -- Enhanced speed divisor calculation with aggressive high velocity compensation
+            local capped_speed_diff = math.min(math.max(speed - 5, 0), 650)
+            local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 180) or 1
+            local velocity_factor = speed > 300 and 0.8 or (speed > 200 and 0.9 or (speed > 100 and 1.0 or 1.1))
+            local speed_divisor = (2.0 + capped_speed_diff * 0.003) * System.__properties.__divisor_multiplier * ping_speed_factor * velocity_factor
             
-            -- Improved parry accuracy calculation for high ping
-            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
-            local parry_accuracy = base_parry_accuracy + high_ping_buffer
+            -- Improved parry accuracy calculation with high velocity optimization
+            local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 8)
+            local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 35, 6) or 0
+            local velocity_buffer = speed > 250 and 2 or (speed > 150 and 1.5 or (speed > 80 and 1 or 0.5))
+            local parry_accuracy = base_parry_accuracy + high_ping_buffer + velocity_buffer
             
             local curved = System.detection.is_curved()
             
@@ -1939,7 +1942,7 @@ function System.autoparry.start()
                         end
                     end
                     
-                    if getgenv().AutoAbility then
+                    if getgenv().AutoAbility and getgenv().AutoAbility == true then
                         local AbilityCD = LocalPlayer.PlayerGui.Hotbar.Ability.UIGradient
                         if AbilityCD.Offset.Y == 0.5 then
                             if LocalPlayer.Character.Abilities:FindFirstChild("Raging Deflection") and LocalPlayer.Character.Abilities["Raging Deflection"].Enabled or
@@ -1977,7 +1980,7 @@ function System.autoparry.start()
                         end
                     end
                     
-                    if getgenv().AutoAbility then
+                    if getgenv().AutoAbility and getgenv().AutoAbility == true then
                         local AbilityCD = LocalPlayer.PlayerGui.Hotbar.Ability.UIGradient
                         if AbilityCD.Offset.Y == 0.5 then
                             if LocalPlayer.Character.Abilities:FindFirstChild("Raging Deflection") and LocalPlayer.Character.Abilities["Raging Deflection"].Enabled or
@@ -2037,14 +2040,16 @@ function System.autoparry.start()
                     
                     local speed = velocity.Magnitude
                     
-                    local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
-                    local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 200) or 1
-                    local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier * ping_speed_factor
+                    local capped_speed_diff = math.min(math.max(speed - 5, 0), 650)
+                    local ping_speed_factor = ping_ms > 120 and (1 + (ping_ms - 120) / 180) or 1
+                    local velocity_factor = speed > 300 and 0.8 or (speed > 200 and 0.9 or (speed > 100 and 1.0 or 1.1))
+                    local speed_divisor = (2.0 + capped_speed_diff * 0.003) * System.__properties.__divisor_multiplier * ping_speed_factor * velocity_factor
                     
-                    -- Improved parry accuracy calculation for high ping in training
-                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
-                    local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 40, 5) or 0
-                    local parry_accuracy = base_parry_accuracy + high_ping_buffer
+                    -- Improved parry accuracy calculation with high velocity optimization for training
+                    local base_parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 8)
+                    local high_ping_buffer = ping_ms > 100 and math.min(ping_ms / 35, 6) or 0
+                    local velocity_buffer = speed > 250 and 2 or (speed > 150 and 1.5 or (speed > 80 and 1 or 0.5))
+                    local parry_accuracy = base_parry_accuracy + high_ping_buffer + velocity_buffer
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
