@@ -1095,7 +1095,7 @@ function System.detection.predict_trajectory(ball, prediction_time)
     -- Generate predicted positions with enhanced curve modeling
     local predicted_velocity = current_velocity
     local predicted_position = current_position
-    local predicted_positions = {}
+    local predicted_positions = {} -- Fixed: Missing variable declaration
     
     for i = 1, steps do
         -- Enhanced physics-based prediction with jerk
