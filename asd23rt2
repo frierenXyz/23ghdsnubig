@@ -1049,7 +1049,7 @@ System.detection = {
     }
 }
 
--- Advanced trajectory prediction for high velocity balls
+-- Advanced trajectory prediction for high velocity balls with enhanced accuracy
 function System.detection.predict_trajectory(ball, prediction_time)
     local props = System.detection.__ball_properties
     local zoomies = ball:FindFirstChild("zoomies")
@@ -1061,24 +1061,30 @@ function System.detection.predict_trajectory(ball, prediction_time)
     
     if speed < 1 then return nil end
     
-    -- Use velocity history for more accurate prediction
-    local predicted_positions = {}
-    local time_step = 0.05 -- 50ms steps
+    -- Enhanced time step calculation based on velocity
+    local time_step = speed > 200 and 0.02 or (speed > 100 and 0.03 or 0.05)
     local steps = math.floor(prediction_time / time_step)
     
-    -- Analyze recent velocity changes for curve prediction
+    -- Enhanced velocity history analysis for better prediction
     local velocity_trend = Vector3.new(0, 0, 0)
     local acceleration = Vector3.new(0, 0, 0)
+    local jerk = Vector3.new(0, 0, 0) -- Rate of change of acceleration
     
-    if #props.__velocity_history >= 3 then
+    if #props.__velocity_history >= 4 then
         local recent = props.__velocity_history[#props.__velocity_history]
         local previous = props.__velocity_history[#props.__velocity_history - 2]
+        local older = props.__velocity_history[#props.__velocity_history - 4]
         
-        if recent and previous then
-            local time_diff = recent.time - previous.time
-            if time_diff > 0 then
-                acceleration = (recent.velocity - previous.velocity) / time_diff
-                velocity_trend = acceleration * time_step
+        if recent and previous and older then
+            local time_diff1 = recent.time - previous.time
+            local time_diff2 = previous.time - older.time
+            
+            if time_diff1 > 0 and time_diff2 > 0 then
+                local accel1 = (recent.velocity - previous.velocity) / time_diff1
+                local accel2 = (previous.velocity - older.velocity) / time_diff2
+                acceleration = (accel1 + accel2) / 2
+                jerk = (accel1 - accel2) / ((time_diff1 + time_diff2) / 2)
+                velocity_trend = acceleration * time_step + (jerk * time_step * time_step) / 2
             end
         end
     end
@@ -1086,45 +1092,64 @@ function System.detection.predict_trajectory(ball, prediction_time)
     -- Apply curve intensity adjustments
     local curve_factor = 1 + (props.__curve_intensity * 0.3)
     
-    -- Generate predicted positions
+    -- Generate predicted positions with enhanced curve modeling
     local predicted_velocity = current_velocity
     local predicted_position = current_position
+    local predicted_positions = {}
     
     for i = 1, steps do
-        -- Apply acceleration and curve effects
-        predicted_velocity = predicted_velocity + (acceleration * time_step)
+        -- Enhanced physics-based prediction with jerk
+        predicted_velocity = predicted_velocity + (acceleration * time_step) + (jerk * time_step * time_step / 2)
         
-        -- Apply curve modifications based on detected curve types
+        -- Apply curve modifications based on detected curve types with enhanced modeling
         if props.__curve_types.sudden then
-            -- Add random deviation for sudden curves
+            -- Enhanced sudden curve with velocity-dependent deviation
+            local velocity_factor = math.min(speed / 200, 1.0)
             local random_deviation = Vector3.new(
-                math.random(-100, 100) * props.__curve_intensity,
-                math.random(-50, 50) * props.__curve_intensity,
-                math.random(-100, 100) * props.__curve_intensity
+                math.random(-150, 150) * props.__curve_intensity * velocity_factor,
+                math.random(-75, 75) * props.__curve_intensity * velocity_factor,
+                math.random(-150, 150) * props.__curve_intensity * velocity_factor
             )
             predicted_velocity = predicted_velocity + random_deviation
         end
         
         if props.__curve_types.spiral then
-            -- Add rotational component for spiral curves
-            local rotation_angle = (i / steps) * math.pi * 2 * props.__curve_intensity
+            -- Enhanced spiral with variable radius and frequency
+            local spiral_radius = 20 * props.__curve_intensity * (1 + speed / 300)
+            local rotation_angle = (i / steps) * math.pi * 4 * props.__curve_intensity -- 2 full rotations
             local rotation_matrix = CFrame.Angles(0, rotation_angle, 0)
-            predicted_velocity = rotation_matrix:VectorToWorldSpace(predicted_velocity)
+            local spiral_offset = Vector3.new(
+                math.cos(rotation_angle) * spiral_radius,
+                math.sin(rotation_angle * 0.5) * spiral_radius * 0.3, -- Vertical component
+                math.sin(rotation_angle) * spiral_radius
+            )
+            predicted_velocity = rotation_matrix:VectorToWorldSpace(predicted_velocity) + spiral_offset
         end
         
         if props.__curve_types.zigzag then
-            -- Add alternating direction changes
-            local zigzag_amplitude = 50 * props.__curve_intensity
-            local zigzag_direction = math.sin(i * 0.5) * zigzag_amplitude
-            predicted_velocity = predicted_velocity + Vector3.new(zigzag_direction, 0, 0)
+            -- Enhanced zigzag with frequency and amplitude modulation
+            local zigzag_amplitude = 75 * props.__curve_intensity * (1 + speed / 400)
+            local zigzag_frequency = 0.8 + (speed / 500) -- Frequency increases with speed
+            local zigzag_direction = math.sin(i * zigzag_frequency) * zigzag_amplitude
+            local zigzag_vertical = math.cos(i * zigzag_frequency * 0.7) * zigzag_amplitude * 0.3
+            predicted_velocity = predicted_velocity + Vector3.new(zigzag_direction, zigzag_vertical, 0)
         end
         
-        -- Update position
+        if props.__curve_types.sustained then
+            -- Enhanced sustained curve with gradual direction change
+            local sustained_factor = props.__curve_intensity * 0.5
+            local curve_angle = (i / steps) * math.pi * sustained_factor
+            local curve_matrix = CFrame.Angles(0, curve_angle, 0)
+            predicted_velocity = curve_matrix:VectorToWorldSpace(predicted_velocity)
+        end
+        
+        -- Update position with enhanced time integration
         predicted_position = predicted_position + (predicted_velocity * time_step)
         table.insert(predicted_positions, {
             position = predicted_position,
             time = tick() + (i * time_step),
-            velocity = predicted_velocity
+            velocity = predicted_velocity,
+            confidence = math.max(0.1, 1.0 - (i / steps) * 0.3) -- Confidence decreases over time
         })
     end
     
@@ -1283,32 +1308,44 @@ function System.detection.get_timing_multipliers(speed, ping, curve_intensity, a
         sustained = 1.1
     }
     
-    -- Base velocity-optimized timing
-    if speed > 250 then -- Ultra high velocity
+    -- Enhanced base velocity-optimized timing with more granular tiers
+    if speed > 300 then -- Extreme velocity
+        multipliers.sudden = 3.0
+        multipliers.sustained = 2.2
+    elseif speed > 250 then -- Ultra high velocity
+        multipliers.sudden = 2.8
+        multipliers.sustained = 2.0
+    elseif speed > 200 then -- Very high velocity
         multipliers.sudden = 2.5
         multipliers.sustained = 1.8
-    elseif speed > 200 then -- Very high velocity
+    elseif speed > 150 then -- High velocity
         multipliers.sudden = 2.2
         multipliers.sustained = 1.6
-    elseif speed > 150 then -- High velocity
-        multipliers.sudden = 2.0
-        multipliers.sustained = 1.5
     elseif speed > 100 then -- Medium-high velocity
-        multipliers.sudden = 1.8
-        multipliers.sustained = 1.3
+        multipliers.sudden = 1.9
+        multipliers.sustained = 1.4
     elseif speed > 60 then -- Medium velocity
-        multipliers.sudden = 1.6
+        multipliers.sudden = 1.7
+        multipliers.sustained = 1.3
+    elseif speed > 30 then -- Low-medium velocity
+        multipliers.sudden = 1.5
         multipliers.sustained = 1.2
     end
     
-    -- Ping compensation for timing
-    if ping > 0.3 then -- Very high ping (300ms+)
+    -- Enhanced ping compensation with more aggressive scaling for high ping
+    if ping > 0.4 then -- Extreme ping (400ms+)
+        multipliers.sudden = multipliers.sudden * 1.5
+        multipliers.sustained = multipliers.sustained * 1.4
+    elseif ping > 0.3 then -- Very high ping (300ms+)
+        multipliers.sudden = multipliers.sudden * 1.4
+        multipliers.sustained = multipliers.sustained * 1.35
+    elseif ping > 0.2 then -- High ping (200ms+)
         multipliers.sudden = multipliers.sudden * 1.3
         multipliers.sustained = multipliers.sustained * 1.25
-    elseif ping > 0.2 then -- High ping (200ms+)
+    elseif ping > 0.1 then -- Medium ping (100ms+)
         multipliers.sudden = multipliers.sudden * 1.2
         multipliers.sustained = multipliers.sustained * 1.15
-    elseif ping > 0.1 then -- Medium ping (100ms+)
+    elseif ping > 0.05 then -- Low-medium ping (50ms+)
         multipliers.sudden = multipliers.sudden * 1.1
         multipliers.sustained = multipliers.sustained * 1.08
     end
@@ -1388,8 +1425,8 @@ function System.detection.is_curved()
     local distance = (pos - ball.Position).Magnitude
     local reach_time = distance / speed - ping
 
-    -- Enhanced ping compensation for high ping scenarios
-    local ping_compensation = math.min(ping * 1.2, 0.5)
+    -- Enhanced ping compensation for high ping scenarios with more aggressive scaling
+    local ping_compensation = math.min(ping * 1.5, 0.6) -- Increased from 1.2 to 1.5, cap from 0.5 to 0.6
     local adjusted_reach_time = reach_time - ping_compensation
     
     -- Update velocity and position history for advanced analysis
@@ -1439,8 +1476,8 @@ function System.detection.is_curved()
                 props.__angular_velocity = angular_velocity
                 
                 -- Enhanced sudden curve detection with velocity compensation
-                local sudden_threshold = speed > 200 and 0.15 or (speed > 100 and 0.25 or 0.35)
-                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 0.5)
+                local sudden_threshold = speed > 250 and 0.12 or (speed > 150 and 0.18 or (speed > 80 and 0.25 or 0.32))
+                local ping_adjusted_threshold = sudden_threshold * (1 + ping * 0.8)
                 
                 if angular_velocity > ping_adjusted_threshold then
                     props.__curve_types.sudden = true
