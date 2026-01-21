@@ -4837,7 +4837,7 @@ FFlagManager.applyProfile("Default")
 
 -- Move UI modules here after main UI is loaded
 task.spawn(function()
-    task.wait(1) -- Wait for UI to be ready
+    task.wait(1.5) -- Wait for UI to be ready
     
     -- FFLAG MANAGER MODULE
     local fflagModule = misc:create_module({
