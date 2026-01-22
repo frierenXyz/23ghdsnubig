@@ -4832,6 +4832,47 @@ function FFlagManager.getAppliedFlags()
     return FFlagManager.__properties.__applied_flags
 end
 
+-- ENHANCED PARRY LOGIC & REMOTE HOOK SYSTEM
+local EnhancedParrySystem = {
+    __properties = {
+        __parry_prediction_enabled = false,
+        __ball_tracking_enabled = false,
+        __auto_dodge_enabled = false,
+        __perfect_timing_enabled = false,
+        __anti_lag_compensation = false,
+        __network_optimizer = false,
+        __remote_interceptor = {},
+        __ball_data_cache = {},
+        __prediction_accuracy = 0.95,
+        __reaction_time = 0.08,
+        __last_parry_time = 0,
+        __parry_cooldown = 0.15,
+        __ball_velocity_cache = {},
+        __trajectory_history = {},
+        __curve_detection_enabled = true,
+        __high_velocity_mode = false,
+        __adaptive_timing = true,
+        __player_proximity_check = true,
+        __max_ball_speed = 1000,
+        __curve_samples = 15,
+        __velocity_prediction_frames = 5
+    },
+    
+    __config = {
+        __max_prediction_distance = 100,
+        __trajectory_samples = 20,
+        __velocity_smoothing_factor = 0.85,
+        __prediction_update_rate = 0.016,
+        __network_optimization_level = 3,
+        __high_velocity_threshold = 500,
+        __curve_threshold = 0.3,
+        __proximity_threshold = 20,
+        __adaptive_reaction_base = 0.08,
+        __adaptive_reaction_min = 0.02,
+        __adaptive_reaction_max = 0.15
+    }
+}
+
 -- Initialize FFlag Manager
 FFlagManager.applyProfile("Default")
 
@@ -6319,50 +6360,8 @@ if balls then
     balls.ChildRemoved:Connect(function()
         System.__properties.__parries = 0
         System.__properties.__parried = false
-        System.__properties.__antidot_parried = false
     end)
 end
-
--- ENHANCED PARRY LOGIC & REMOTE HOOK SYSTEM
-local EnhancedParrySystem = {
-    __properties = {
-        __parry_prediction_enabled = false,
-        __ball_tracking_enabled = false,
-        __auto_dodge_enabled = false,
-        __perfect_timing_enabled = false,
-        __anti_lag_compensation = false,
-        __network_optimizer = false,
-        __remote_interceptor = {},
-        __ball_data_cache = {},
-        __prediction_accuracy = 0.95,
-        __reaction_time = 0.08,
-        __last_parry_time = 0,
-        __parry_cooldown = 0.15,
-        __ball_velocity_cache = {},
-        __trajectory_history = {},
-        __curve_detection_enabled = true,
-        __high_velocity_mode = false,
-        __adaptive_timing = true,
-        __player_proximity_check = true,
-        __max_ball_speed = 1000,
-        __curve_samples = 15,
-        __velocity_prediction_frames = 5
-    },
-    
-    __config = {
-        __max_prediction_distance = 100,
-        __trajectory_samples = 20,
-        __velocity_smoothing_factor = 0.85,
-        __prediction_update_rate = 0.016,
-        __network_optimization_level = 3,
-        __high_velocity_threshold = 500,
-        __curve_threshold = 0.3,
-        __proximity_threshold = 20,
-        __adaptive_reaction_base = 0.08,
-        __adaptive_reaction_min = 0.02,
-        __adaptive_reaction_max = 0.15
-    }
-}
 
 -- Advanced Ball Tracking System
 function EnhancedParrySystem.trackBall()
