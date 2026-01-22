@@ -4867,7 +4867,7 @@ task.spawn(function()
         end
     })
 
-    fflagModule:create_button({
+    fflagModule:create_checkbox({
         title = "Apply Profile",
         flag = "apply_fflag_profile",
         callback = function()
