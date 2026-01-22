@@ -4867,7 +4867,7 @@ task.spawn(function()
         end
     })
 
-    fflagModule:create_checkbox({
+    fflagModule:create_button({
         title = "Apply Profile",
         flag = "apply_fflag_profile",
         callback = function()
@@ -6053,7 +6053,7 @@ local parrySuccessAllConnection
 
 while task.wait() and not parrySuccessAllConnection do
     for i,v in getconnections(ReplicatedStorage.Remotes.ParrySuccessAll.OnClientEvent) do
-        if v and v.Function and getinfo(v.Function).name == "parrySuccessAll" then
+        if v.Function and getinfo(v.Function).name == "parrySuccessAll" then
             parrySuccessAllConnection = v
             playParryFunc = v.Function
             v:Disable()
@@ -6064,7 +6064,7 @@ end
 local parrySuccessClientConnection
 while task.wait() and not parrySuccessClientConnection do
     for i,v in getconnections(ReplicatedStorage.Remotes.ParrySuccessClient.Event) do
-        if v and v.Function and getinfo(v.Function).name == "parrySuccessAll" then
+        if v.Function and getinfo(v.Function).name == "parrySuccessAll" then
             parrySuccessClientConnection = v
             v:Disable()
         end
