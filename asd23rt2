@@ -4907,7 +4907,9 @@ task.spawn(function()
         description = 'Advanced parry prediction and tracking',
         section = 'right',
         callback = function(value)
-            EnhancedParrySystem.__properties.__parry_prediction_enabled = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__parry_prediction_enabled = value
+            end
             Library.SendNotification({
                 title = "Enhanced Parry",
                 text = value and "ON" or "OFF",
@@ -4920,7 +4922,9 @@ task.spawn(function()
         title = "Ball Tracking",
         flag = "ball_tracking",
         callback = function(value)
-            EnhancedParrySystem.__properties.__ball_tracking_enabled = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__ball_tracking_enabled = value
+            end
         end
     })
 
@@ -4928,7 +4932,9 @@ task.spawn(function()
         title = "Perfect Timing",
         flag = "perfect_timing",
         callback = function(value)
-            EnhancedParrySystem.__properties.__perfect_timing_enabled = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__perfect_timing_enabled = value
+            end
         end
     })
 
@@ -4936,7 +4942,9 @@ task.spawn(function()
         title = "Anti-Lag Compensation",
         flag = "anti_lag_compensation",
         callback = function(value)
-            EnhancedParrySystem.__properties.__anti_lag_compensation = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__anti_lag_compensation = value
+            end
         end
     })
 
@@ -4944,7 +4952,9 @@ task.spawn(function()
         title = "Network Optimizer",
         flag = "network_optimizer",
         callback = function(value)
-            EnhancedParrySystem.__properties.__network_optimizer = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__network_optimizer = value
+            end
         end
     })
 
@@ -4956,7 +4966,9 @@ task.spawn(function()
         value = 0.95,
         round_number = false,
         callback = function(value)
-            EnhancedParrySystem.__properties.__prediction_accuracy = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__prediction_accuracy = value
+            end
         end
     })
 
@@ -4968,7 +4980,9 @@ task.spawn(function()
         value = 0.1,
         round_number = false,
         callback = function(value)
-            EnhancedParrySystem.__properties.__reaction_time = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__reaction_time = value
+            end
         end
     })
 
@@ -4980,7 +4994,9 @@ task.spawn(function()
         value = 0.2,
         round_number = false,
         callback = function(value)
-            EnhancedParrySystem.__properties.__parry_cooldown = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__parry_cooldown = value
+            end
         end
     })
 
@@ -4992,39 +5008,9 @@ task.spawn(function()
         value = 50,
         round_number = true,
         callback = function(value)
-            EnhancedParrySystem.__config.__max_prediction_distance = value
-        end
-    })
-
-    enhancedParryModule:create_checkbox({
-        title = "Curve Detection",
-        flag = "curve_detection",
-        callback = function(value)
-            EnhancedParrySystem.__properties.__curve_detection_enabled = value
-        end
-    })
-
-    enhancedParryModule:create_checkbox({
-        title = "High Velocity Mode",
-        flag = "high_velocity_mode",
-        callback = function(value)
-            EnhancedParrySystem.__properties.__high_velocity_mode = value
-        end
-    })
-
-    enhancedParryModule:create_checkbox({
-        title = "Adaptive Timing",
-        flag = "adaptive_timing",
-        callback = function(value)
-            EnhancedParrySystem.__properties.__adaptive_timing = value
-        end
-    })
-
-    enhancedParryModule:create_checkbox({
-        title = "Player Proximity Check",
-        flag = "player_proximity_check",
-        callback = function(value)
-            EnhancedParrySystem.__properties.__player_proximity_check = value
+            if EnhancedParrySystem and EnhancedParrySystem.__config then
+                EnhancedParrySystem.__config.__max_prediction_distance = value
+            end
         end
     })
 
@@ -5036,7 +5022,9 @@ task.spawn(function()
         value = 1000,
         round_number = true,
         callback = function(value)
-            EnhancedParrySystem.__properties.__max_ball_speed = value
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__max_ball_speed = value
+            end
         end
     })
 
@@ -5048,7 +5036,9 @@ task.spawn(function()
         value = 500,
         round_number = true,
         callback = function(value)
-            EnhancedParrySystem.__config.__high_velocity_threshold = value
+            if EnhancedParrySystem and EnhancedParrySystem.__config then
+                EnhancedParrySystem.__config.__high_velocity_threshold = value
+            end
         end
     })
 
@@ -5060,7 +5050,9 @@ task.spawn(function()
         value = 0.3,
         round_number = false,
         callback = function(value)
-            EnhancedParrySystem.__config.__curve_threshold = value
+            if EnhancedParrySystem and EnhancedParrySystem.__config then
+                EnhancedParrySystem.__config.__curve_threshold = value
+            end
         end
     })
 
@@ -5072,10 +5064,107 @@ task.spawn(function()
         value = 20,
         round_number = true,
         callback = function(value)
-            EnhancedParrySystem.__config.__proximity_threshold = value
+            if EnhancedParrySystem and EnhancedParrySystem.__config then
+                EnhancedParrySystem.__config.__proximity_threshold = value
+            end
         end
     })
-end)
+
+    enhancedParryModule:create_checkbox({
+        title = "Curve Detection",
+        flag = "curve_detection",
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__curve_detection_enabled = value
+            end
+        end
+    })
+
+    enhancedParryModule:create_checkbox({
+        title = "High Velocity Mode",
+        flag = "high_velocity_mode",
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__high_velocity_mode = value
+            end
+        end
+    })
+
+    enhancedParryModule:create_checkbox({
+        title = "Adaptive Timing",
+        flag = "adaptive_timing",
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__adaptive_timing = value
+            end
+        end
+    })
+
+    enhancedParryModule:create_checkbox({
+        title = "Player Proximity Check",
+        flag = "player_proximity_check",
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__player_proximity_check = value
+            end
+        end
+    })
+
+    enhancedParryModule:create_slider({
+        title = "Max Ball Speed",
+        flag = "max_ball_speed",
+        minimum_value = 500,
+        maximum_value = 2000,
+        value = 1000,
+        round_number = true,
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__properties then
+                EnhancedParrySystem.__properties.__max_ball_speed = value
+            end
+        end
+    })
+
+    enhancedParryModule:create_slider({
+        title = "High Velocity Threshold",
+        flag = "high_velocity_threshold",
+        minimum_value = 200,
+        maximum_value = 1000,
+        value = 500,
+        round_number = true,
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__config then
+                EnhancedParrySystem.__config.__high_velocity_threshold = value
+            end
+        end
+    })
+
+    enhancedParryModule:create_slider({
+        title = "Curve Detection Sensitivity",
+        flag = "curve_threshold",
+        minimum_value = 0.1,
+        maximum_value = 0.8,
+        value = 0.3,
+        round_number = false,
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__config then
+                EnhancedParrySystem.__config.__curve_threshold = value
+            end
+        end
+    })
+
+    enhancedParryModule:create_slider({
+        title = "Proximity Threshold",
+        flag = "proximity_threshold",
+        minimum_value = 10,
+        maximum_value = 50,
+        value = 20,
+        round_number = true,
+        callback = function(value)
+            if EnhancedParrySystem and EnhancedParrySystem.__config then
+                EnhancedParrySystem.__config.__proximity_threshold = value
+            end
+        end
+    })
 
 local ParticleSystem = {
     Particles = {},
