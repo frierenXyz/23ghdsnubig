@@ -1,0 +1,1549 @@
+--[[ 
+    MODERN UI LIBRARY (Core Only)
+    -----------------------------
+    1. Paste this code at the top of your script.
+    2. Write your own Window/Tab/Button logic at the bottom.
+]]
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local TextService = game:GetService("TextService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local Library = {}
+local GUI_NAME = "ModernLibrary_AutoUnload"
+local Connections = {}
+local _choosing_keybind = false
+
+-- Connection management
+setmetatable(Connections, {
+	__index = function(self, key)
+		return rawget(self, key)
+	end
+})
+
+Connections.disconnect = function(connection)
+	if not Connections[connection] then
+		return
+	end
+	if Connections[connection].Disconnect then
+		Connections[connection]:Disconnect()
+	end
+	Connections[connection] = nil
+end
+
+Connections.disconnect_all = function()
+	for key, value in pairs(Connections) do
+		if type(value) == 'function' then
+			continue
+		end
+		if value and value.Disconnect then
+			value:Disconnect()
+		end
+		Connections[key] = nil
+	end
+end
+
+local THEME = {
+	-- Neon Blue Theme - Easily Modifiable
+	Primary = Color3.fromRGB(0, 140, 255),          -- Primary neon blue
+	PrimaryDark = Color3.fromRGB(0, 100, 200),       -- Darker blue
+	PrimaryLight = Color3.fromRGB(100, 180, 255),   -- Lighter blue
+	Accent = Color3.fromRGB(0, 200, 255),           -- Accent blue
+	
+	-- Background colors
+	Background = Color3.fromRGB(15, 15, 20),         -- Main background
+	SecondaryBg = Color3.fromRGB(20, 20, 25),       -- Secondary background
+	TertiaryBg = Color3.fromRGB(25, 25, 30),        -- Tertiary background
+	Border = Color3.fromRGB(40, 40, 45),             -- Border color
+	
+	-- Text colors
+	TextPrimary = Color3.fromRGB(240, 240, 245),    -- Primary text
+	TextSecondary = Color3.fromRGB(180, 180, 190),  -- Secondary text
+	TextDisabled = Color3.fromRGB(120, 120, 130),   -- Disabled text
+	
+	-- Status colors
+	Success = Color3.fromRGB(100, 255, 100),        -- Success (green)
+	Error = Color3.fromRGB(255, 100, 100),          -- Error (red)
+	Warning = Color3.fromRGB(255, 200, 0)           -- Warning (yellow)
+}
+
+--// CONFIG SYSTEM //--
+local Config = {
+	save = function(file_name, config)
+		local success_save, result = pcall(function()
+			local flags = HttpService:JSONEncode(config)
+			writefile('ModernUI/'..file_name..'.json', flags)
+		end)
+		if not success_save then
+			warn('Failed to save config:', result)
+		end
+	end,
+	load = function(file_name, config)
+		local success_load, result = pcall(function()
+			if not isfolder('ModernUI') then
+				makefolder('ModernUI')
+			end
+			
+			if not isfile('ModernUI/'..file_name..'.json') then
+				Config.save(file_name, config)
+				return config
+			end
+			
+			local flags = readfile('ModernUI/'..file_name..'.json')
+			if not flags then
+				Config.save(file_name, config)
+				return config
+			end
+			return HttpService:JSONDecode(flags)
+		end)
+		
+		if not success_load then
+			warn('Failed to load config:', result)
+			return config
+		end
+		
+		return result or config
+	end
+}
+
+--// NOTIFICATION SYSTEM //--
+local function CreateNotificationContainer()
+	local NotificationContainer = Instance.new("Frame")
+	NotificationContainer.Name = "NotificationContainer"
+	NotificationContainer.Size = UDim2.new(0, 300, 0, 0)
+	NotificationContainer.Position = UDim2.new(1, -310, 0, 10)
+	NotificationContainer.BackgroundTransparency = 1
+	NotificationContainer.ClipsDescendants = false
+	NotificationContainer.ZIndex = 100
+	NotificationContainer.Parent = CoreGui
+	NotificationContainer.AutomaticSize = Enum.AutomaticSize.Y
+
+	local UIListLayout = Instance.new("UIListLayout")
+	UIListLayout.FillDirection = Enum.FillDirection.Vertical
+	UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	UIListLayout.Padding = UDim.new(0, 10)
+	UIListLayout.Parent = NotificationContainer
+
+	return NotificationContainer
+end
+
+local NotificationContainer = CoreGui:FindFirstChild("NotificationContainer") or CreateNotificationContainer()
+
+local function SendNotification(settings)
+	if not NotificationContainer or not NotificationContainer.Parent then
+		NotificationContainer = CreateNotificationContainer()
+	end
+
+	local Notification = Instance.new("Frame")
+	Notification.Size = UDim2.new(1, 0, 0, 0)
+	Notification.BackgroundTransparency = 1
+	Notification.BorderSizePixel = 0
+	Notification.Name = "Notification"
+	Notification.Parent = NotificationContainer
+	Notification.AutomaticSize = Enum.AutomaticSize.Y
+	Notification.LayoutOrder = #NotificationContainer:GetChildren()
+
+	local UICorner = Instance.new("UICorner")
+	UICorner.CornerRadius = UDim.new(0, 8)
+	UICorner.Parent = Notification
+
+	local InnerFrame = Instance.new("Frame")
+	InnerFrame.Size = UDim2.new(1, 0, 0, 0)
+	InnerFrame.Position = UDim2.new(1, 310, 0, 0)
+	InnerFrame.BackgroundColor3 = THEME.SecondaryBg
+	InnerFrame.BackgroundTransparency = 0.1
+	InnerFrame.BorderSizePixel = 0
+	InnerFrame.Name = "InnerFrame"
+	InnerFrame.Parent = Notification
+	InnerFrame.AutomaticSize = Enum.AutomaticSize.Y
+	InnerFrame.ZIndex = 101
+
+	local InnerUICorner = Instance.new("UICorner")
+	InnerUICorner.CornerRadius = UDim.new(0, 8)
+	InnerUICorner.Parent = InnerFrame
+	
+	local InnerStroke = Instance.new("UIStroke")
+	InnerStroke.Color = THEME.Primary
+	InnerStroke.Transparency = 0.3
+	InnerStroke.Thickness = 1
+	InnerStroke.Parent = InnerFrame
+
+	local Title = Instance.new("TextLabel")
+	Title.Text = settings.title or "Notification"
+	Title.TextColor3 = THEME.PrimaryLight
+	Title.FontFace = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+	Title.TextSize = 14
+	Title.Size = UDim2.new(1, -20, 0, 20)
+	Title.Position = UDim2.new(0, 10, 0, 8)
+	Title.BackgroundTransparency = 1
+	Title.TextXAlignment = Enum.TextXAlignment.Left
+	Title.TextYAlignment = Enum.TextYAlignment.Center
+	Title.TextWrapped = true
+	Title.AutomaticSize = Enum.AutomaticSize.Y
+	Title.Parent = InnerFrame
+	Title.ZIndex = 102
+
+	local Body = Instance.new("TextLabel")
+	Body.Text = settings.text or "Notification message"
+	Body.TextColor3 = THEME.TextSecondary
+	Body.FontFace = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+	Body.TextSize = 12
+	Body.Size = UDim2.new(1, -20, 0, 0)
+	Body.Position = UDim2.new(0, 10, 0, 28)
+	Body.BackgroundTransparency = 1
+	Body.TextXAlignment = Enum.TextXAlignment.Left
+	Body.TextYAlignment = Enum.TextYAlignment.Top
+	Body.TextWrapped = true
+	Body.AutomaticSize = Enum.AutomaticSize.Y
+	Body.Parent = InnerFrame
+	Body.ZIndex = 102
+
+	task.spawn(function()
+		wait(0.05)
+		local totalHeight = Title.TextBounds.Y + Body.TextBounds.Y + 20
+		InnerFrame.Size = UDim2.new(1, 0, 0, totalHeight)
+		Notification.Size = UDim2.new(1, 0, 0, totalHeight)
+	end)
+
+	task.spawn(function()
+		local tweenIn = TweenService:Create(InnerFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0, 0, 0, 0)
+		})
+		tweenIn:Play()
+		tweenIn.Completed:Wait()
+
+		local duration = settings.duration or 5
+		wait(duration)
+
+		local tweenOut = TweenService:Create(InnerFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = UDim2.new(1, 310, 0, 0)
+		})
+		tweenOut:Play()
+
+		tweenOut.Completed:Connect(function()
+			Notification:Destroy()
+		end)
+	end)
+end
+
+--// UTILITY FUNCTIONS //--
+local function Create(class, props)
+	local inst = Instance.new(class)
+	for k, v in pairs(props) do inst[k] = v end
+	return inst
+end
+
+local function MakeDraggable(topbar, widget)
+	local dragging, dragInput, dragStart, startPos
+
+	local function Update(input)
+		local delta = input.Position - dragStart
+		local targetPos = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X, 
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+		TweenService:Create(widget, TweenInfo.new(0.05), {Position = targetPos}):Play()
+	end
+
+	topbar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = widget.Position
+			
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	topbar.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			Update(input)
+		end
+	end)
+end
+
+--// MAIN LIBRARY LOGIC //--
+function Library:CreateWindow(config)
+	local Title = config.Title or "UI Library"
+	local ConfigName = config.ConfigName or tostring(game.GameId)
+	
+	-- Load config
+	local _config = Config.load(ConfigName, {
+		_flags = {},
+		_keybinds = {},
+		_library = {}
+	})
+	
+	-- Auto-Unload previous instance
+	local OldInstance = PlayerGui:FindFirstChild(GUI_NAME)
+	if OldInstance then
+		OldInstance:Destroy()
+	end
+
+	local ScreenGui = Create("ScreenGui", {
+		Name = GUI_NAME,
+		Parent = PlayerGui,
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		IgnoreGuiInset = true
+	})
+
+	-- Minimized Button
+	local OpenFrame = Create("Frame", {
+		Name = "OpenFrame",
+		Parent = ScreenGui,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 10),
+		Size = UDim2.new(0, 0, 0, 0),
+		BackgroundColor3 = THEME.Background,
+		ClipsDescendants = true,
+		Visible = false
+	})
+	Create("UICorner", {Parent = OpenFrame, CornerRadius = UDim.new(1, 0)})
+	Create("UIStroke", {Parent = OpenFrame, Color = THEME.Primary, Thickness = 2})
+	
+	local OpenBtn = Create("TextButton", {
+		Parent = OpenFrame,
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "OPEN MENU",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = THEME.Primary,
+		TextSize = 14
+	})
+
+	-- Main Window
+	local MainFrame = Create("Frame", {
+		Name = "MainFrame",
+		Parent = ScreenGui,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 500, 0, 350),
+		BackgroundColor3 = THEME.Background,
+		ClipsDescendants = true
+	})
+	Create("UICorner", {Parent = MainFrame, CornerRadius = UDim.new(0, 10)})
+	Create("UIStroke", {Parent = MainFrame, Color = THEME.Primary, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border})
+
+	-- Topbar
+	local Topbar = Create("Frame", {
+		Parent = MainFrame,
+		BackgroundColor3 = THEME.SecondaryBg,
+		Size = UDim2.new(1, 0, 0, 40),
+		BorderSizePixel = 0
+	})
+	MakeDraggable(Topbar, MainFrame)
+
+	Create("TextLabel", {
+		Parent = Topbar,
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 15, 0, 0),
+		Size = UDim2.new(0.6, 0, 1, 0),
+		Font = Enum.Font.GothamBold,
+		Text = Title,
+		TextColor3 = THEME.TextPrimary,
+		TextSize = 16,
+		TextXAlignment = Enum.TextXAlignment.Left
+	})
+
+	-- Controls
+	local Controls = Create("Frame", {
+		Parent = Topbar,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.new(0, 60, 0, 24),
+		BackgroundTransparency = 1
+	})
+	Create("UIListLayout", {Parent = Controls, FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)})
+
+	local MinBtn = Create("TextButton", {
+		Parent = Controls,
+		BackgroundColor3 = THEME.TertiaryBg,
+		Size = UDim2.new(0, 24, 0, 24),
+		Text = "-",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = THEME.TextPrimary,
+		AutoButtonColor = false
+	})
+	Create("UICorner", {Parent = MinBtn, CornerRadius = UDim.new(0, 4)})
+
+	local ExitBtn = Create("TextButton", {
+		Parent = Controls,
+		BackgroundColor3 = THEME.Error,
+		Size = UDim2.new(0, 24, 0, 24),
+		Text = "X",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = Color3.new(1,1,1),
+		AutoButtonColor = false
+	})
+	Create("UICorner", {Parent = ExitBtn, CornerRadius = UDim.new(0, 4)})
+
+	MinBtn.MouseButton1Click:Connect(function()
+		MainFrame:TweenSize(UDim2.new(0, 500, 0, 0), "In", "Quad", 0.3, true, function()
+			MainFrame.Visible = false
+			OpenFrame.Visible = true
+			OpenFrame:TweenSize(UDim2.new(0, 120, 0, 35), "Out", "Back", 0.3, true)
+		end)
+	end)
+
+	OpenBtn.MouseButton1Click:Connect(function()
+		OpenFrame:TweenSize(UDim2.new(0, 0, 0, 0), "In", "Quad", 0.2, true, function()
+			OpenFrame.Visible = false
+			MainFrame.Visible = true
+			MainFrame:TweenSize(UDim2.new(0, 500, 0, 350), "Out", "Back", 0.3, true)
+		end)
+	end)
+
+	ExitBtn.MouseButton1Click:Connect(function()
+		Connections.disconnect_all()
+		ScreenGui:Destroy()
+	end)
+
+	-- Sidebar & Pages
+	local Sidebar = Create("Frame", {
+		Parent = MainFrame,
+		BackgroundColor3 = THEME.SecondaryBg,
+		Position = UDim2.new(0, 0, 0, 40),
+		Size = UDim2.new(0, 140, 1, -40),
+		BorderSizePixel = 0
+	})
+	Create("UIListLayout", {Parent = Sidebar, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)})
+	Create("UIPadding", {Parent = Sidebar, PaddingTop = UDim.new(0, 10), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10)})
+
+	local PageContainer = Create("Frame", {
+		Parent = MainFrame,
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 150, 0, 50),
+		Size = UDim2.new(1, -160, 1, -60)
+	})
+
+	local WindowObj = {Tabs = {}, Config = _config, ConfigName = ConfigName}
+	local FirstTab = true
+
+	function WindowObj:CreateTab(name)
+		local TabBtn = Create("TextButton", {
+			Parent = Sidebar,
+			BackgroundColor3 = THEME.SecondaryBg,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 30),
+			Text = name,
+			Font = Enum.Font.GothamMedium,
+			TextColor3 = THEME.TextSecondary,
+			TextSize = 13,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AutoButtonColor = false
+		})
+		Create("UICorner", {Parent = TabBtn, CornerRadius = UDim.new(0, 6)})
+		Create("UIPadding", {Parent = TabBtn, PaddingLeft = UDim.new(0, 8)})
+
+		local Page = Create("ScrollingFrame", {
+			Parent = PageContainer,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Visible = false,
+			ScrollBarThickness = 2,
+			ScrollBarImageColor3 = THEME.Primary,
+			BorderSizePixel = 0
+		})
+		local PageLayout = Create("UIListLayout", {Parent = Page, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6)})
+		PageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 20)
+		end)
+
+		local function Activate()
+			for _, v in pairs(WindowObj.Tabs) do
+				TweenService:Create(v.Btn, TweenInfo.new(0.2), {TextColor3 = THEME.TextSecondary}):Play()
+				v.Page.Visible = false
+			end
+			TweenService:Create(TabBtn, TweenInfo.new(0.2), {TextColor3 = THEME.Primary}):Play()
+			Page.Visible = true
+		end
+
+		TabBtn.MouseButton1Click:Connect(Activate)
+		if FirstTab then FirstTab = false; Activate() end
+
+		table.insert(WindowObj.Tabs, {Btn = TabBtn, Page = Page})
+
+		local Elements = {}
+
+		function Elements:CreateSection(text)
+			Create("TextLabel", {
+				Parent = Page,
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 25),
+				Text = text:upper(),
+				Font = Enum.Font.GothamBold,
+				TextColor3 = THEME.TextSecondary,
+				TextSize = 11,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+		end
+
+		function Elements:CreateButton(text, callback)
+			callback = callback or function() end
+			local Btn = Create("TextButton", {
+				Parent = Page,
+				BackgroundColor3 = THEME.TertiaryBg,
+				Size = UDim2.new(1, -5, 0, 32),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextPrimary,
+				TextSize = 13,
+				AutoButtonColor = false
+			})
+			Create("UICorner", {Parent = Btn, CornerRadius = UDim.new(0, 6)})
+			Create("UIStroke", {Parent = Btn, Color = THEME.Border, Thickness = 1})
+
+			Btn.MouseButton1Click:Connect(function()
+				TweenService:Create(Btn, TweenInfo.new(0.1), {BackgroundColor3 = THEME.Primary}):Play()
+				task.wait(0.1)
+				TweenService:Create(Btn, TweenInfo.new(0.2), {BackgroundColor3 = THEME.TertiaryBg}):Play()
+				callback()
+			end)
+		end
+
+		function Elements:CreateToggle(options)
+			local text = options.text or "Toggle"
+			local callback = options.callback or function() end
+			local flag = options.flag
+			local default = options.default or false
+			local keybind = options.keybind
+			
+			local Toggled = default
+			
+			-- Load from config
+			if flag and WindowObj.Config._flags[flag] ~= nil then
+				Toggled = WindowObj.Config._flags[flag]
+			end
+			
+			local Btn = Create("TextButton", {
+				Parent = Page,
+				BackgroundColor3 = THEME.TertiaryBg,
+				Size = UDim2.new(1, -5, 0, 32),
+				Text = "",
+				AutoButtonColor = false
+			})
+			Create("UICorner", {Parent = Btn, CornerRadius = UDim.new(0, 6)})
+			Create("UIStroke", {Parent = Btn, Color = THEME.Border, Thickness = 1})
+
+			Create("TextLabel", {
+				Parent = Btn,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 10, 0, 0),
+				Size = UDim2.new(1, -80, 1, 0),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextPrimary,
+				TextSize = 13,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+
+			local Tracker = Create("Frame", {
+				Parent = Btn,
+				BackgroundColor3 = THEME.TertiaryBg,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -45, 0.5, 0),
+				Size = UDim2.new(0, 36, 0, 18)
+			})
+			Create("UICorner", {Parent = Tracker, CornerRadius = UDim.new(1, 0)})
+
+			local Dot = Create("Frame", {
+				Parent = Tracker,
+				BackgroundColor3 = THEME.TextDisabled,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 2, 0.5, 0),
+				Size = UDim2.new(0, 14, 0, 14)
+			})
+			Create("UICorner", {Parent = Dot, CornerRadius = UDim.new(1, 0)})
+			
+			-- Keybind display
+			local KeybindLabel = Create("TextLabel", {
+				Parent = Btn,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -5, 0.5, 0),
+				Size = UDim2.new(0, 35, 0, 16),
+				Text = keybind or "...",
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextSecondary,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Center
+			})
+			Create("UICorner", {Parent = KeybindLabel, CornerRadius = UDim.new(0, 3)})
+			Create("UIStroke", {Parent = KeybindLabel, Color = THEME.Primary, Thickness = 1})
+			
+			-- Load keybind from config
+			if flag and WindowObj.Config._keybinds[flag] then
+				KeybindLabel.Text = string.gsub(tostring(WindowObj.Config._keybinds[flag]), "Enum.KeyCode.", "")
+			end
+			
+			local function change_state(state)
+				Toggled = state
+				local TargetPos = Toggled and UDim2.new(0, 20, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
+				local TargetColor = Toggled and THEME.Primary or THEME.TertiaryBg
+				local DotColor = Toggled and Color3.new(1,1,1) or THEME.TextDisabled
+				
+				TweenService:Create(Dot, TweenInfo.new(0.2), {Position = TargetPos, BackgroundColor3 = DotColor}):Play()
+				TweenService:Create(Tracker, TweenInfo.new(0.2), {BackgroundColor3 = TargetColor}):Play()
+				
+				if flag then
+					WindowObj.Config._flags[flag] = Toggled
+					Config.save(WindowObj.ConfigName, WindowObj.Config)
+				end
+				
+				callback(Toggled)
+			end
+			
+			-- Set initial state
+			if Toggled then
+				change_state(true)
+			end
+
+			Btn.MouseButton1Click:Connect(function()
+				change_state(not Toggled)
+			end)
+			
+			-- Keybind functionality
+			if flag then
+				-- Keybind setting
+				KeybindLabel.InputBegan:Connect(function(input, gameProcessed)
+					if gameProcessed or _choosing_keybind then return end
+					if input.UserInputType ~= Enum.UserInputType.MouseButton3 then return end
+					
+					_choosing_keybind = true
+					KeybindLabel.Text = "..."
+					
+					local chooseConnection
+					chooseConnection = UserInputService.InputBegan:Connect(function(keyInput, processed)
+						if processed then return end
+						if keyInput.UserInputType ~= Enum.UserInputType.Keyboard then return end
+						if keyInput.KeyCode == Enum.KeyCode.Unknown then return end
+						
+						chooseConnection:Disconnect()
+						_choosing_keybind = false
+						
+						if keyInput.KeyCode == Enum.KeyCode.Backspace then
+							WindowObj.Config._keybinds[flag] = nil
+							KeybindLabel.Text = "..."
+						else
+							WindowObj.Config._keybinds[flag] = tostring(keyInput.KeyCode)
+							KeybindLabel.Text = string.gsub(tostring(keyInput.KeyCode), "Enum.KeyCode.", "")
+						end
+						
+						Config.save(WindowObj.ConfigName, WindowObj.Config)
+					end)
+				end)
+				
+				-- Keybind execution
+				Connections[flag.."_keybind"] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+					if gameProcessed then return end
+					if WindowObj.Config._keybinds[flag] and tostring(input.KeyCode) == WindowObj.Config._keybinds[flag] then
+						change_state(not Toggled)
+					end
+				end)
+			end
+		end
+
+		function Elements:CreateDropdown(options)
+			local text = options.text or "Dropdown"
+			local callback = options.callback or function() end
+			local flag = options.flag
+			local multi = options.multi or false
+			local default = options.default or (options.options[1] or "None")
+			local Selected = multi and {} or default
+			local Open = false
+			
+			-- Load from config
+			if flag and WindowObj.Config._flags[flag] ~= nil then
+				Selected = WindowObj.Config._flags[flag]
+			end
+			
+			local Dropdown = Create("TextButton", {
+				Parent = Page,
+				BackgroundColor3 = THEME.TertiaryBg,
+				Size = UDim2.new(1, -5, 0, 32),
+				Text = "",
+				AutoButtonColor = false
+			})
+			Create("UICorner", {Parent = Dropdown, CornerRadius = UDim.new(0, 6)})
+			Create("UIStroke", {Parent = Dropdown, Color = THEME.Border, Thickness = 1})
+
+			Create("TextLabel", {
+				Parent = Dropdown,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 10, 0, 0),
+				Size = UDim2.new(0, 100, 1, 0),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextPrimary,
+				TextSize = 13,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			
+			local SelectedLabel = Create("TextLabel", {
+				Parent = Dropdown,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -10, 0.5, 0),
+				Size = UDim2.new(0, 200, 1, 0),
+				Text = multi and table.concat(Selected, ", ") or tostring(Selected),
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextSecondary,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				TextTruncate = Enum.TextTruncate.AtEnd
+			})
+			
+			local Arrow = Create("TextLabel", {
+				Parent = Dropdown,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -25, 0.5, 0),
+				Size = UDim2.new(0, 15, 0, 15),
+				Text = Open and "▲" or "▼",
+				Font = Enum.Font.GothamBold,
+				TextColor3 = THEME.Primary,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Center
+			})
+			
+			local OptionsFrame = Create("ScrollingFrame", {
+				Parent = Page,
+				BackgroundColor3 = THEME.SecondaryBg,
+				Size = UDim2.new(1, -5, 0, 0),
+				Position = UDim2.new(0, 0, 1, 0),
+				Visible = false,
+				ScrollBarThickness = 2,
+				ScrollBarImageColor3 = THEME.Primary,
+				BorderSizePixel = 0
+			})
+			Create("UICorner", {Parent = OptionsFrame, CornerRadius = UDim.new(0, 6)})
+			Create("UIStroke", {Parent = OptionsFrame, Color = THEME.Border, Thickness = 1})
+			
+			local OptionsLayout = Create("UIListLayout", {Parent = OptionsFrame, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2)})
+			
+			-- Create option buttons
+			for i, option in ipairs(options.options or {}) do
+				local OptionBtn = Create("TextButton", {
+					Parent = OptionsFrame,
+					BackgroundColor3 = THEME.TertiaryBg,
+					Size = UDim2.new(1, -10, 0, 25),
+					Text = tostring(option),
+					Font = Enum.Font.Gotham,
+					TextColor3 = THEME.TextPrimary,
+					TextSize = 12,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					AutoButtonColor = false
+				})
+				Create("UICorner", {Parent = OptionBtn, CornerRadius = UDim.new(0, 4)})
+				
+				-- Highlight selected options
+				if multi then
+					if table.find(Selected, option) then
+						OptionBtn.BackgroundColor3 = THEME.Primary
+						OptionBtn.TextColor3 = Color3.new(1,1,1)
+					end
+				else
+					if Selected == option then
+						OptionBtn.BackgroundColor3 = THEME.Primary
+						OptionBtn.TextColor3 = Color3.new(1,1,1)
+					end
+				end
+				
+				OptionBtn.MouseButton1Click:Connect(function()
+					if multi then
+						if table.find(Selected, option) then
+							for j, v in ipairs(Selected) do
+								if v == option then
+									table.remove(Selected, j)
+									break
+								end
+							end
+						else
+							table.insert(Selected, option)
+						end
+						SelectedLabel.Text = table.concat(Selected, ", ")
+					else
+						Selected = option
+						SelectedLabel.Text = tostring(Selected)
+					end
+					
+					if flag then
+						WindowObj.Config._flags[flag] = Selected
+						Config.save(WindowObj.ConfigName, WindowObj.Config)
+					end
+					
+					callback(Selected)
+					
+					-- Update highlights
+					for _, child in ipairs(OptionsFrame:GetChildren()) do
+						if child:IsA("TextButton") then
+							if multi then
+								if table.find(Selected, child.Text) then
+									child.BackgroundColor3 = THEME.Primary
+									child.TextColor3 = Color3.new(1,1,1)
+								else
+									child.BackgroundColor3 = THEME.TertiaryBg
+									child.TextColor3 = THEME.TextPrimary
+								end
+							else
+								if Selected == child.Text then
+									child.BackgroundColor3 = THEME.Primary
+									child.TextColor3 = Color3.new(1,1,1)
+								else
+									child.BackgroundColor3 = THEME.TertiaryBg
+									child.TextColor3 = THEME.TextPrimary
+								end
+							end
+						end
+					end
+				end)
+			end
+			
+			-- Update options frame size
+			OptionsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+				OptionsFrame.CanvasSize = UDim2.new(0, 0, 0, OptionsLayout.AbsoluteContentSize.Y + 10)
+			end)
+			
+			Dropdown.MouseButton1Click:Connect(function()
+				Open = not Open
+				OptionsFrame.Visible = Open
+				Arrow.Text = Open and "▲" or "▼"
+				
+				if Open then
+					OptionsFrame.Size = UDim2.new(1, -5, 0, math.min(150, OptionsLayout.AbsoluteContentSize.Y + 10))
+				else
+					OptionsFrame.Size = UDim2.new(1, -5, 0, 0)
+				end
+			end)
+		end
+		
+		function Elements:CreateTextbox(options)
+			local text = options.text or "Textbox"
+			local callback = options.callback or function() end
+			local flag = options.flag
+			local default = options.default or ""
+			local placeholder = options.placeholder or "Enter text..."
+			local Value = default
+			
+			-- Load from config
+			if flag and WindowObj.Config._flags[flag] ~= nil then
+				Value = WindowObj.Config._flags[flag]
+			end
+			
+			local Frame = Create("Frame", {
+				Parent = Page,
+				BackgroundColor3 = THEME.TertiaryBg,
+				Size = UDim2.new(1, -5, 0, 32)
+			})
+			Create("UICorner", {Parent = Frame, CornerRadius = UDim.new(0, 6)})
+			Create("UIStroke", {Parent = Frame, Color = THEME.Border, Thickness = 1})
+
+			Create("TextLabel", {
+				Parent = Frame,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 10, 0, 0),
+				Size = UDim2.new(0, 100, 1, 0),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextPrimary,
+				TextSize = 13,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			
+			local Box = Create("TextBox", {
+				Parent = Frame,
+				BackgroundColor3 = THEME.SecondaryBg,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -10, 0.5, 0),
+				Size = UDim2.new(0, 150, 0, 20),
+				Text = Value,
+				PlaceholderText = placeholder,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextPrimary,
+				PlaceholderColor3 = THEME.TextDisabled,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ClearTextOnFocus = false
+			})
+			Create("UICorner", {Parent = Box, CornerRadius = UDim.new(0, 4)})
+			
+			Box.FocusLost:Connect(function(enterPressed)
+				Value = Box.Text
+				
+				if flag then
+					WindowObj.Config._flags[flag] = Value
+					Config.save(WindowObj.ConfigName, WindowObj.Config)
+				end
+				
+				callback(Value, enterPressed)
+			end)
+		end
+
+		function Elements:CreateSlider(options)
+			local text = options.text or "Slider"
+			local min = options.min or 0
+			local max = options.max or 100
+			local default = options.default or min
+			local callback = options.callback or function() end
+			local flag = options.flag
+			local Value = default
+			local Dragging = false
+			
+			-- Load from config
+			if flag and WindowObj.Config._flags[flag] ~= nil then
+				Value = WindowObj.Config._flags[flag]
+			end
+
+			local Frame = Create("Frame", {
+				Parent = Page,
+				BackgroundColor3 = THEME.TertiaryBg,
+				Size = UDim2.new(1, -5, 0, 45)
+			})
+			Create("UICorner", {Parent = Frame, CornerRadius = UDim.new(0, 6)})
+			Create("UIStroke", {Parent = Frame, Color = THEME.Border, Thickness = 1})
+
+			Create("TextLabel", {
+				Parent = Frame,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 10, 0, 5),
+				Size = UDim2.new(1, -20, 0, 15),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextPrimary,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			local ValLbl = Create("TextLabel", {
+				Parent = Frame,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 10, 0, 5),
+				Size = UDim2.new(1, -20, 0, 15),
+				Text = tostring(Value),
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.TextSecondary,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Right
+			})
+
+			local Bar = Create("TextButton", {
+				Parent = Frame,
+				BackgroundColor3 = THEME.TertiaryBg,
+				Position = UDim2.new(0, 10, 0, 25),
+				Size = UDim2.new(1, -20, 0, 6),
+				AutoButtonColor = false,
+				Text = ""
+			})
+			Create("UICorner", {Parent = Bar, CornerRadius = UDim.new(1, 0)})
+
+			local Fill = Create("Frame", {
+				Parent = Bar,
+				BackgroundColor3 = THEME.Primary,
+				Size = UDim2.new((Value - min) / (max - min), 0, 1, 0)
+			})
+			Create("UICorner", {Parent = Fill, CornerRadius = UDim.new(1, 0)})
+
+			local function Update(input)
+				local SizeX = Bar.AbsoluteSize.X
+				local PosX = Bar.AbsolutePosition.X
+				local Percent = math.clamp((input.Position.X - PosX) / SizeX, 0, 1)
+				Value = math.floor(min + (max - min) * Percent)
+				ValLbl.Text = tostring(Value)
+				TweenService:Create(Fill, TweenInfo.new(0.05), {Size = UDim2.new(Percent, 0, 1, 0)}):Play()
+				
+				if flag then
+					WindowObj.Config._flags[flag] = Value
+					Config.save(WindowObj.ConfigName, WindowObj.Config)
+				end
+				
+				callback(Value)
+			end
+			
+			-- Set initial value
+			Update({Position = Vector2.new(Bar.AbsolutePosition.X + (Value - min) / (max - min) * Bar.AbsoluteSize.X, 0)})
+
+			Bar.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					Dragging = true
+					Update(input)
+				end
+			end)
+			UserInputService.InputChanged:Connect(function(input)
+				if Dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					Update(input)
+				end
+			end)
+			UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					Dragging = false
+				end
+			end)
+		end
+
+		return Elements
+	end
+
+	return WindowObj
+end
+
+-- Add notification function to Library
+Library.SendNotification = SendNotification
+
+-- Add UI toggle keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.Insert then
+		for _, gui in ipairs(PlayerGui:GetChildren()) do
+			if gui.Name == GUI_NAME then
+				local mainFrame = gui:FindFirstChild("MainFrame")
+				local openFrame = gui:FindFirstChild("OpenFrame")
+				
+				if mainFrame and openFrame then
+					if mainFrame.Visible then
+						mainFrame:TweenSize(UDim2.new(0, 500, 0, 0), "In", "Quad", 0.3, true, function()
+							mainFrame.Visible = false
+							openFrame.Visible = true
+							openFrame:TweenSize(UDim2.new(0, 120, 0, 35), "Out", "Back", 0.3, true)
+						end)
+					else
+						openFrame:TweenSize(UDim2.new(0, 0, 0, 0), "In", "Quad", 0.2, true, function()
+							openFrame.Visible = false
+							mainFrame.Visible = true
+							mainFrame:TweenSize(UDim2.new(0, 500, 0, 350), "Out", "Back", 0.3, true)
+						end)
+					end
+				end
+				break
+			end
+		end
+	end
+end)
+
+--[[
+-- EXAMPLE USAGE --
+local Window = Library:CreateWindow({
+	Title = "Enhanced UI Library",
+	ConfigName = "MyScriptConfig"
+})
+
+local MainTab = Window:CreateTab("Main")
+local SettingsTab = Window:CreateTab("Settings")
+
+-- Main Tab Elements
+MainTab:CreateSection("Combat")
+MainTab:CreateToggle({
+	text = "Aimbot",
+	flag = "aimbot_enabled",
+	default = false,
+	keybind = "RightControl",
+	callback = function(state)
+		Library.SendNotification({
+			title = "Aimbot",
+			text = state and "Enabled" or "Disabled",
+			duration = 3
+		})
+	end
+})
+
+MainTab:CreateSlider({
+	text = "Aimbot Smoothness",
+	flag = "aimbot_smoothness",
+	min = 1,
+	max = 100,
+	default = 50,
+	callback = function(value)
+		print("Smoothness:", value)
+	end
+})
+
+MainTab:CreateDropdown({
+	text = "Aim Part",
+	flag = "aim_part",
+	options = {"Head", "Torso", "Arms", "Legs"},
+	default = "Head",
+	callback = function(selected)
+		print("Aim part:", selected)
+	end
+})
+
+MainTab:CreateSection("Visuals")
+MainTab:CreateDropdown({
+	text = "ESP Options",
+	flag = "esp_options",
+	multi = true,
+	options = {"Boxes", "Names", "Health", "Distance"},
+	default = {"Boxes", "Names"},
+	callback = function(selected)
+		print("ESP options:", table.concat(selected, ", "))
+	end
+})
+
+-- Settings Tab Elements
+SettingsTab:CreateSection("Configuration")
+SettingsTab:CreateButton("Save Config", function()
+	Library.SendNotification({
+		title = "Config",
+		text = "Configuration saved successfully!",
+		duration = 3
+	})
+end)
+
+SettingsTab:CreateTextbox({
+	text = "Custom Name",
+	flag = "custom_name",
+	placeholder = "Enter your name...",
+	callback = function(value, enterPressed)
+		if enterPressed then
+			Library.SendNotification({
+				title = "Name Changed",
+				text = "Your name is now: " .. value,
+				duration = 3
+			})
+		end
+	end
+})
+
+Library.SendNotification({
+	title = "UI Loaded",
+	text = "Press Insert to toggle the UI",
+	duration = 5
+})
+--]]
+
+-- READY TO USE EXAMPLE - Just uncomment and run!
+--[[
+-- ===============================================
+-- ENHANCED UI LIBRARY - COMPLETE EXAMPLE
+-- ===============================================
+-- Features demonstrated:
+-- ✅ Config saving/loading
+-- ✅ Keybind support
+-- ✅ Notifications
+-- ✅ Multi-select dropdowns
+-- ✅ Textboxes
+-- ✅ Enhanced toggles
+-- ✅ Modern theme
+-- ===============================================
+
+local Window = Library:CreateWindow({
+	Title = "🎮 Ultimate Script Hub",
+	ConfigName = "UltimateScriptConfig"
+})
+
+-- Create tabs
+local CombatTab = Window:CreateTab("⚔️ Combat")
+local VisualsTab = Window:CreateTab("👁️ Visuals")
+local MovementTab = Window:CreateTab("🏃 Movement")
+local SettingsTab = Window:CreateTab("⚙️ Settings")
+
+-- ===============================================
+-- COMBAT TAB
+-- ===============================================
+CombatTab:CreateSection("🎯 Aimbot")
+CombatTab:CreateToggle({
+	text = "Enable Aimbot",
+	flag = "aimbot_enabled",
+	default = false,
+	keybind = "RightControl",
+	callback = function(state)
+		Library.SendNotification({
+			title = "🎯 Aimbot",
+			text = state and "✅ Activated" or "❌ Deactivated",
+			duration = 3
+		})
+		print("Aimbot:", state and "ON" or "OFF")
+	end
+})
+
+CombatTab:CreateSlider({
+	text = "Aimbot Smoothness",
+	flag = "aimbot_smoothness",
+	min = 1,
+	max = 100,
+	default = 50,
+	callback = function(value)
+		print("Smoothness set to:", value)
+	end
+})
+
+CombatTab:CreateSlider({
+	text = "Aimbot FOV",
+	flag = "aimbot_fov",
+	min = 10,
+	max = 360,
+	default = 90,
+	callback = function(value)
+		print("FOV set to:", value .. "°")
+	end
+})
+
+CombatTab:CreateDropdown({
+	text = "Target Priority",
+	flag = "target_priority",
+	options = {"Closest", "Lowest HP", "Highest Threat", "Crosshair"},
+	default = "Closest",
+	callback = function(selected)
+		Library.SendNotification({
+			title = "🎯 Priority",
+			text = "Target: " .. selected,
+			duration = 2
+		})
+		print("Target priority:", selected)
+	end
+})
+
+CombatTab:CreateDropdown({
+	text = "Aim Part",
+	flag = "aim_part",
+	options = {"Head", "Torso", "Arms", "Legs", "Random"},
+	default = "Head",
+	callback = function(selected)
+		print("Aiming at:", selected)
+	end
+})
+
+CombatTab:CreateSection("🔫 Weapon Mods")
+CombatTab:CreateToggle({
+	text = "No Recoil",
+	flag = "no_recoil",
+	default = false,
+	keybind = "R",
+	callback = function(state)
+		print("No Recoil:", state and "Enabled" or "Disabled")
+	end
+})
+
+CombatTab:CreateToggle({
+	text = "Rapid Fire",
+	flag = "rapid_fire",
+	default = false,
+	keybind = "T",
+	callback = function(state)
+		print("Rapid Fire:", state and "Enabled" or "Disabled")
+	end
+})
+
+CombatTab:CreateSlider({
+	text = "Fire Rate",
+	flag = "fire_rate",
+	min = 1,
+	max = 100,
+	default = 10,
+	callback = function(value)
+		print("Fire rate:", value .. " rounds/sec")
+	end
+})
+
+-- ===============================================
+-- VISUALS TAB
+-- ===============================================
+VisualsTab:CreateSection("👁️ ESP")
+VisualsTab:CreateToggle({
+	text = "Enable ESP",
+	flag = "esp_enabled",
+	default = false,
+	keybind = "V",
+	callback = function(state)
+		Library.SendNotification({
+			title = "👁️ ESP",
+			text = state and "✅ Visible" or "❌ Hidden",
+			duration = 3
+		})
+	end
+})
+
+VisualsTab:CreateDropdown({
+	text = "ESP Options",
+	flag = "esp_options",
+	multi = true,
+	options = {"Boxes", "Names", "Health", "Distance", "Weapon", "Chams", "Skeleton"},
+	default = {"Boxes", "Names", "Health"},
+	callback = function(selected)
+		print("ESP options:", table.concat(selected, ", "))
+		Library.SendNotification({
+			title = "👁️ ESP Updated",
+			text = "Showing: " .. table.concat(selected, ", "),
+			duration = 2
+		})
+	end
+})
+
+VisualsTab:CreateSlider({
+	text = "ESP Distance",
+	flag = "esp_distance",
+	min = 50,
+	max = 1000,
+	default = 500,
+	callback = function(value)
+		print("ESP Distance:", value .. " studs")
+	end
+})
+
+VisualsTab:CreateSection("🌈 Visual Effects")
+VisualsTab:CreateToggle({
+	text = "Fullbright",
+	flag = "fullbright",
+	default = false,
+	keybind = "F",
+	callback = function(state)
+		print("Fullbright:", state and "Enabled" or "Disabled")
+	end
+})
+
+VisualsTab:CreateToggle({
+	text = "Crosshair",
+	flag = "crosshair",
+	default = false,
+	keybind = "C",
+	callback = function(state)
+		print("Crosshair:", state and "Enabled" or "Disabled")
+	end
+})
+
+VisualsTab:CreateSlider({
+	text = "Crosshair Size",
+	flag = "crosshair_size",
+	min = 1,
+	max = 50,
+	default = 10,
+	callback = function(value)
+		print("Crosshair size:", value)
+	end
+})
+
+VisualsTab:CreateDropdown({
+	text = "Crosshair Style",
+	flag = "crosshair_style",
+	options = {"Dot", "Cross", "Circle", "Custom"},
+	default = "Cross",
+	callback = function(selected)
+		print("Crosshair style:", selected)
+	end
+})
+
+-- ===============================================
+-- MOVEMENT TAB
+-- ===============================================
+MovementTab:CreateSection("🏃 Speed")
+MovementTab:CreateToggle({
+	text = "Speed Hack",
+	flag = "speed_enabled",
+	default = false,
+	keybind = "LeftShift",
+	callback = function(state)
+		Library.SendNotification({
+			title = "🏃 Speed",
+			text = state and "⚡ Boosted!" or "🚶 Normal",
+			duration = 3
+		})
+	end
+})
+
+MovementTab:CreateSlider({
+	text = "Speed Multiplier",
+	flag = "speed_multiplier",
+	min = 1,
+	max = 10,
+	default = 2,
+	callback = function(value)
+		print("Speed multiplier:", value .. "x")
+	end
+})
+
+MovementTab:CreateSection("🦘 Jump")
+MovementTab:CreateToggle({
+	text = "Super Jump",
+	flag = "super_jump",
+	default = false,
+	keybind = "Space",
+	callback = function(state)
+		print("Super Jump:", state and "Enabled" or "Disabled")
+	end
+})
+
+MovementTab:CreateSlider({
+	text = "Jump Power",
+	flag = "jump_power",
+	min = 10,
+	max = 200,
+	default = 50,
+	callback = function(value)
+		print("Jump power:", value)
+	end
+})
+
+MovementTab:CreateSection("✈️ Flight")
+MovementTab:CreateToggle({
+	text = "Fly Mode",
+	flag = "fly_enabled",
+	default = false,
+	keybind = "F",
+	callback = function(state)
+		Library.SendNotification({
+			title = "✈️ Flight",
+			text = state and "🛫 Taking off!" or "🛬 Landed",
+			duration = 3
+		})
+	end
+})
+
+MovementTab:CreateSlider({
+	text = "Fly Speed",
+	flag = "fly_speed",
+	min = 1,
+	max = 100,
+	default = 25,
+	callback = function(value)
+		print("Fly speed:", value)
+	end
+})
+
+-- ===============================================
+-- SETTINGS TAB
+-- ===============================================
+SettingsTab:CreateSection("⚙️ Configuration")
+SettingsTab:CreateButton("💾 Save Configuration", function()
+	Library.SendNotification({
+		title = "💾 Config Saved",
+		text = "All settings have been saved!",
+		duration = 3
+	})
+	print("Configuration saved successfully!")
+end)
+
+SettingsTab:CreateButton("🔄 Reload Configuration", function()
+	Library.SendNotification({
+		title = "🔄 Config Reloaded",
+		text = "Settings have been reloaded!",
+		duration = 3
+	})
+	print("Configuration reloaded!")
+end)
+
+SettingsTab:CreateButton("🗑️ Reset All Settings", function()
+	Library.SendNotification({
+		title = "🗑️ Settings Reset",
+		text = "All settings have been reset!",
+		duration = 3
+	})
+	print("All settings reset!")
+end)
+
+SettingsTab:CreateSection("👤 User Settings")
+SettingsTab:CreateTextbox({
+	text = "Player Name",
+	flag = "player_name",
+	placeholder = "Enter your name...",
+	default = "Player",
+	callback = function(value, enterPressed)
+		if enterPressed then
+			Library.SendNotification({
+				title = "👤 Name Changed",
+				text = "Your name is now: " .. value,
+				duration = 3
+			})
+			print("Player name:", value)
+		end
+	end
+})
+
+SettingsTab:CreateTextbox({
+	text = "Discord Webhook",
+	flag = "discord_webhook",
+	placeholder = "https://discord.com/api/webhooks/...",
+	callback = function(value, enterPressed)
+		if enterPressed and value ~= "" then
+			Library.SendNotification({
+				title = "🔗 Webhook Set",
+				text = "Discord webhook configured!",
+				duration = 3
+			})
+			print("Discord webhook:", value)
+		end
+	end
+})
+
+SettingsTab:CreateSection("🎨 Theme")
+SettingsTab:CreateDropdown({
+	text = "UI Theme",
+	flag = "ui_theme",
+	options = {"Neon Blue", "Neon Red", "Neon Green", "Neon Purple", "Dark Mode"},
+	default = "Neon Blue",
+	callback = function(selected)
+		Library.SendNotification({
+			title = "🎨 Theme Changed",
+			text = "UI Theme: " .. selected,
+			duration = 2
+		})
+		print("UI theme:", selected)
+	end
+})
+
+SettingsTab:CreateSlider({
+	text = "UI Transparency",
+	flag = "ui_transparency",
+	min = 0,
+	max = 100,
+	default = 0,
+	callback = function(value)
+		print("UI transparency:", value .. "%")
+	end
+})
+
+SettingsTab:CreateSection("ℹ️ Info")
+SettingsTab:CreateButton("📋 Copy Config Path", function()
+	Library.SendNotification({
+		title = "📋 Path Copied",
+		text = "Config path copied to clipboard!",
+		duration = 3
+	})
+	print("Config path: ModernUI/UltimateScriptConfig.json")
+end)
+
+SettingsTab:CreateButton("🔔 Test Notification", function()
+	Library.SendNotification({
+		title = "🔔 Test Notification",
+		text = "This is a test notification!",
+		duration = 5
+	})
+end)
+
+-- ===============================================
+-- WELCOME MESSAGE
+-- ===============================================
+task.wait(1)
+Library.SendNotification({
+	title = "🎮 Ultimate Script Hub",
+	text = "Welcome! Press INSERT to toggle UI",
+	duration = 5
+})
+
+Library.SendNotification({
+	title = "💡 Tips",
+	text = "Right-click keybinds to customize them!",
+	duration = 4
+})
+
+print("=== Ultimate Script Hub Loaded ===")
+print("📌 Press INSERT to toggle UI")
+print("📌 Right-click keybinds to set them")
+print("📌 All settings are automatically saved")
+print("=====================================")
+--]]
