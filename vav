@@ -1,39 +1,1199 @@
--- Script corrigido para carregamento assíncrono da UI (FluentPlus)
--- O carregamento da biblioteca de UI é a principal causa do congelamento.
--- Envolver o script em task.spawn() permite que o jogo permaneça responsivo enquanto a UI carrega em segundo plano.
-task.spawn(function()
---return Library
+--[[ 
+    NEXT-GEN MODERN UI LIBRARY (Enhanced)
+    ======================================
+    Enhanced UI with glassmorphism, smooth animations, and modern design.
+]]
 
--- Script refatorado para usar a Fluent UI Library (FluentPlus)
-local Fluent = loadstring(game:HttpGet("https://raw.githubusercontent.com/discoart/FluentPlus/refs/heads/main/Beta.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 
--- Criar a janela principal
-local Window = Fluent:CreateWindow({
-    Title = "River",
-    SubTitle = "by JV",
-    TabWidth = 160,
-    Size = UDim2.fromOffset(480, 380),
-    Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.RightControl
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local Library = {}
+local GUI_NAME = "NextGenUI_AutoUnload"
+local Connections = {}
+local _choosing_keybind = false
+local _current_theme = "Dark"
+
+-- Connection management
+setmetatable(Connections, {
+	__index = function(self, key)
+		return rawget(self, key)
+	end
 })
 
--- Mapeamento das abas para a nova sintaxe da Fluent UI
-local Tabs = {
-    Rage = Window:AddTab({Title = "Autoparry", Icon = "shield"}),
-    Detection = Window:AddTab({Title = "Detection", Icon = "eye"}),
-    Spam = Window:AddTab({Title = "Spam", Icon = "skull"}),
-    Player = Window:AddTab({Title = "Player", Icon = "user"}),
-    Visuals = Window:AddTab({Title = "Visuals", Icon = "monitor"}),
-    Misc = Window:AddTab({Title = "Misc", Icon = "settings"}),
-    Settings = Window:AddTab({Title = "Settings", Icon = "sliders"})
+Connections.disconnect = function(connection)
+	if not Connections[connection] then return end
+	if Connections[connection].Disconnect then
+		Connections[connection]:Disconnect()
+	end
+	Connections[connection] = nil
+end
+
+Connections.disconnect_all = function()
+	for key, value in pairs(Connections) do
+		if type(value) == 'function' then continue end
+		if value and value.Disconnect then
+			value:Disconnect()
+		end
+		Connections[key] = nil
+	end
+end
+
+-- Enhanced Theme System
+local THEMES = {
+	Dark = {
+		Background = Color3.fromRGB(15, 15, 20),
+		Header = Color3.fromRGB(20, 20, 25),
+		Section = Color3.fromRGB(25, 25, 30),
+		Text = Color3.fromRGB(240, 240, 245),
+		Accent = Color3.fromRGB(0, 140, 255),
+		Accent2 = Color3.fromRGB(0, 200, 255),
+		DarkText = Color3.fromRGB(140, 140, 150),
+		Red = Color3.fromRGB(255, 60, 60),
+		Green = Color3.fromRGB(60, 255, 60),
+		Yellow = Color3.fromRGB(255, 200, 0),
+		Stroke = Color3.fromRGB(50, 50, 55),
+		Glass = Color3.fromRGB(255, 255, 255),
+		Shadow = Color3.fromRGB(0, 0, 0)
+	},
+	Neon = {
+		Background = Color3.fromRGB(10, 10, 15),
+		Header = Color3.fromRGB(15, 15, 20),
+		Section = Color3.fromRGB(20, 20, 25),
+		Text = Color3.fromRGB(255, 255, 255),
+		Accent = Color3.fromRGB(255, 0, 128),
+		Accent2 = Color3.fromRGB(0, 255, 255),
+		DarkText = Color3.fromRGB(150, 150, 160),
+		Red = Color3.fromRGB(255, 50, 150),
+		Green = Color3.fromRGB(50, 255, 150),
+		Yellow = Color3.fromRGB(255, 255, 0),
+		Stroke = Color3.fromRGB(255, 0, 128),
+		Glass = Color3.fromRGB(255, 255, 255),
+		Shadow = Color3.fromRGB(255, 0, 128)
+	}
 }
 
-local Options = Fluent.Options
+local THEME = THEMES.Dark
 
--- O restante do código original começa aqui
+-- Config System
+local Config = {
+	save = function(file_name, config)
+		local success_save, result = pcall(function()
+			if not isfolder('NextGenUI') then
+				makefolder('NextGenUI')
+			end
+			local flags = HttpService:JSONEncode(config)
+			writefile('NextGenUI/'..file_name..'.json', flags)
+		end)
+		if not success_save then
+			warn('Failed to save config:', result)
+		end
+	end,
+	load = function(file_name, config)
+		local success_load, result = pcall(function()
+			if not isfolder('NextGenUI') then
+				makefolder('NextGenUI')
+			end
+			
+			if not isfile('NextGenUI/'..file_name..'.json') then
+				Config.save(file_name, config)
+				return config
+			end
+			
+			local flags = readfile('NextGenUI/'..file_name..'.json')
+			if not flags then
+				Config.save(file_name, config)
+				return config
+			end
+			return HttpService:JSONDecode(flags)
+		end)
+		
+		if not success_load then
+			warn('Failed to load config:', result)
+			return config
+		end
+		
+		return result or config
+	end
+}
+
+-- Advanced Notification System
+local NotificationContainer
+
+local function CreateNotificationContainer()
+	NotificationContainer = Instance.new("Frame")
+	NotificationContainer.Name = "NotificationContainer"
+	NotificationContainer.Size = UDim2.new(0, 350, 0, 0)
+	NotificationContainer.Position = UDim2.new(1, -360, 0, 10)
+	NotificationContainer.BackgroundTransparency = 1
+	NotificationContainer.ClipsDescendants = false
+	NotificationContainer.ZIndex = 1000
+	NotificationContainer.Parent = CoreGui
+	NotificationContainer.AutomaticSize = Enum.AutomaticSize.Y
+
+	local UIListLayout = Instance.new("UIListLayout")
+	UIListLayout.FillDirection = Enum.FillDirection.Vertical
+	UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	UIListLayout.Padding = UDim.new(0, 8)
+	UIListLayout.Parent = NotificationContainer
+
+	return NotificationContainer
+end
+
+local function SendNotification(settings)
+	if not NotificationContainer or not NotificationContainer.Parent then
+		NotificationContainer = CreateNotificationContainer()
+	end
+
+	local Notification = Instance.new("Frame")
+	Notification.Size = UDim2.new(1, 0, 0, 0)
+	Notification.BackgroundTransparency = 1
+	Notification.BorderSizePixel = 0
+	Notification.Name = "Notification"
+	Notification.Parent = NotificationContainer
+	Notification.AutomaticSize = Enum.AutomaticSize.Y
+	Notification.LayoutOrder = #NotificationContainer:GetChildren()
+
+	local UICorner = Instance.new("UICorner")
+	UICorner.CornerRadius = UDim.new(0, 12)
+	UICorner.Parent = Notification
+
+	local InnerFrame = Instance.new("Frame")
+	InnerFrame.Size = UDim2.new(1, 0, 0, 0)
+	InnerFrame.Position = UDim2.new(1, 360, 0, 0)
+	InnerFrame.BackgroundColor3 = THEME.Section
+	InnerFrame.BackgroundTransparency = 0.1
+	InnerFrame.BorderSizePixel = 0
+	InnerFrame.Name = "InnerFrame"
+	InnerFrame.Parent = Notification
+	InnerFrame.AutomaticSize = Enum.AutomaticSize.Y
+	InnerFrame.ZIndex = 1001
+
+	local InnerUICorner = Instance.new("UICorner")
+	InnerUICorner.CornerRadius = UDim.new(0, 12)
+	InnerUICorner.Parent = InnerFrame
+	
+	local InnerStroke = Instance.new("UIStroke")
+	InnerStroke.Color = THEME.Accent
+	InnerStroke.Transparency = 0.3
+	InnerStroke.Thickness = 1.5
+	InnerStroke.Parent = InnerFrame
+
+	-- Glass effect
+	local GlassOverlay = Instance.new("Frame")
+	GlassOverlay.Size = UDim2.new(1, 0, 1, 0)
+	GlassOverlay.Position = UDim2.new(0, 0, 0, 0)
+	GlassOverlay.BackgroundColor3 = THEME.Glass
+	GlassOverlay.BackgroundTransparency = 0.9
+	GlassOverlay.BorderSizePixel = 0
+	GlassOverlay.ZIndex = 1002
+	GlassOverlay.Parent = InnerFrame
+
+	local GlassUICorner = Instance.new("UICorner")
+	GlassUICorner.CornerRadius = UDim.new(0, 12)
+	GlassUICorner.Parent = GlassOverlay
+
+	local Title = Instance.new("TextLabel")
+	Title.Text = settings.title or "Notification"
+	Title.TextColor3 = THEME.Accent2
+	Title.FontFace = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
+	Title.TextSize = 14
+	Title.Size = UDim2.new(1, -20, 0, 20)
+	Title.Position = UDim2.new(0, 12, 0, 10)
+	Title.BackgroundTransparency = 1
+	Title.TextXAlignment = Enum.TextXAlignment.Left
+	Title.TextYAlignment = Enum.TextYAlignment.Center
+	Title.TextWrapped = true
+	Title.AutomaticSize = Enum.AutomaticSize.Y
+	Title.Parent = InnerFrame
+	Title.ZIndex = 1003
+
+	local Body = Instance.new("TextLabel")
+	Body.Text = settings.text or "Notification message"
+	Body.TextColor3 = THEME.Text
+	Body.FontFace = Font.new('rbxasset://fonts/families/GothamSSm.json', Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+	Body.TextSize = 12
+	Body.Size = UDim2.new(1, -20, 0, 0)
+	Body.Position = UDim2.new(0, 12, 0, 32)
+	Body.BackgroundTransparency = 1
+	Body.TextXAlignment = Enum.TextXAlignment.Left
+	Body.TextYAlignment = Enum.TextYAlignment.Top
+	Body.TextWrapped = true
+	Body.AutomaticSize = Enum.AutomaticSize.Y
+	Body.Parent = InnerFrame
+	Body.ZIndex = 1003
+
+	task.spawn(function()
+		wait(0.05)
+		local totalHeight = Title.TextBounds.Y + Body.TextBounds.Y + 30
+		InnerFrame.Size = UDim2.new(1, 0, 0, totalHeight)
+		Notification.Size = UDim2.new(1, 0, 0, totalHeight)
+		GlassOverlay.Size = UDim2.new(1, 0, 1, 0)
+	end)
+
+	task.spawn(function()
+		local tweenIn = TweenService:Create(InnerFrame, TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0, 0, 0, 0)
+		})
+		tweenIn:Play()
+		tweenIn.Completed:Wait()
+
+		local duration = settings.duration or 5
+		wait(duration)
+
+		local tweenOut = TweenService:Create(InnerFrame, TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = UDim2.new(1, 360, 0, 0)
+		})
+		tweenOut:Play()
+
+		tweenOut.Completed:Connect(function()
+			Notification:Destroy()
+		end)
+	end)
+end
+
+-- Utility Functions
+local function Create(class, props)
+	local inst = Instance.new(class)
+	for k, v in pairs(props) do inst[k] = v end
+	return inst
+end
+
+local function MakeDraggable(topbar, widget)
+	local dragging, dragInput, dragStart, startPos
+
+	local function Update(input)
+		local delta = input.Position - dragStart
+		local targetPos = UDim2.new(
+			startPos.X.Scale, startPos.X.Offset + delta.X, 
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y
+		)
+		TweenService:Create(widget, TweenInfo.new(0.05), {Position = targetPos}):Play()
+	end
+
+	topbar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = widget.Position
+			
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	topbar.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			Update(input)
+		end
+	end)
+end
+
+-- Main Library Logic
+function Library:CreateWindow(config)
+	local Title = config.Title or "UI Library"
+	local ConfigName = config.ConfigName or tostring(game.GameId)
+	
+	local _config = Config.load(ConfigName, {
+		_flags = {},
+		_keybinds = {},
+		_library = {}
+	})
+	
+	-- Auto-Unload previous instance
+	local OldInstance = PlayerGui:FindFirstChild(GUI_NAME)
+	if OldInstance then
+		OldInstance:Destroy()
+	end
+
+	local ScreenGui = Create("ScreenGui", {
+		Name = GUI_NAME,
+		Parent = PlayerGui,
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		IgnoreGuiInset = true
+	})
+
+	-- Minimized Button
+	local OpenFrame = Create("Frame", {
+		Name = "OpenFrame",
+		Parent = ScreenGui,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 10),
+		Size = UDim2.new(0, 0, 0, 0),
+		BackgroundColor3 = THEME.Background,
+		ClipsDescendants = true,
+		Visible = false
+	})
+	Create("UICorner", {Parent = OpenFrame, CornerRadius = UDim.new(1, 0)})
+	Create("UIStroke", {Parent = OpenFrame, Color = THEME.Accent, Thickness = 2})
+	
+	local OpenBtn = Create("TextButton", {
+		Parent = OpenFrame,
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "OPEN MENU",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = THEME.Accent,
+		TextSize = 14
+	})
+
+	-- Main Window
+	local MainFrame = Create("Frame", {
+		Name = "MainFrame",
+		Parent = ScreenGui,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 550, 0, 400),
+		BackgroundColor3 = THEME.Background,
+		ClipsDescendants = true
+	})
+	Create("UICorner", {Parent = MainFrame, CornerRadius = UDim.new(0, 15)})
+	Create("UIStroke", {Parent = MainFrame, Color = THEME.Accent, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border})
+
+	-- Glass effect overlay
+	local GlassOverlay = Create("Frame", {
+		Parent = MainFrame,
+		Size = UDim2.new(1, 0, 1, 0),
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundColor3 = THEME.Glass,
+		BackgroundTransparency = 0.95,
+		BorderSizePixel = 0
+	})
+	Create("UICorner", {Parent = GlassOverlay, CornerRadius = UDim.new(0, 15)})
+
+	-- Topbar
+	local Topbar = Create("Frame", {
+		Parent = MainFrame,
+		BackgroundColor3 = THEME.Header,
+		Size = UDim2.new(1, 0, 0, 50),
+		BorderSizePixel = 0
+	})
+	Create("UICorner", {Parent = Topbar, CornerRadius = UDim.new(0, 15)})
+	MakeDraggable(Topbar, MainFrame)
+
+	Create("TextLabel", {
+		Parent = Topbar,
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 20, 0, 0),
+		Size = UDim2.new(0.6, 0, 1, 0),
+		Font = Enum.Font.GothamBold,
+		Text = Title,
+		TextColor3 = THEME.Text,
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Left
+	})
+
+	-- Controls
+	local Controls = Create("Frame", {
+		Parent = Topbar,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -15, 0.5, 0),
+		Size = UDim2.new(0, 80, 0, 30),
+		BackgroundTransparency = 1
+	})
+	Create("UIListLayout", {Parent = Controls, FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8)})
+
+	local MinBtn = Create("TextButton", {
+		Parent = Controls,
+		BackgroundColor3 = THEME.Section,
+		Size = UDim2.new(0, 30, 0, 30),
+		Text = "—",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = THEME.Text,
+		AutoButtonColor = false
+	})
+	Create("UICorner", {Parent = MinBtn, CornerRadius = UDim.new(0, 6)})
+
+	local ExitBtn = Create("TextButton", {
+		Parent = Controls,
+		BackgroundColor3 = THEME.Red,
+		Size = UDim2.new(0, 30, 0, 30),
+		Text = "✕",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = Color3.new(1,1,1),
+		AutoButtonColor = false
+	})
+	Create("UICorner", {Parent = ExitBtn, CornerRadius = UDim.new(0, 6)})
+
+	MinBtn.MouseButton1Click:Connect(function()
+		MainFrame:TweenSize(UDim2.new(0, 550, 0, 0), "In", "Quad", 0.3, true, function()
+			MainFrame.Visible = false
+			OpenFrame.Visible = true
+			OpenFrame:TweenSize(UDim2.new(0, 140, 0, 40), "Out", "Back", 0.3, true)
+		end)
+	end)
+
+	OpenBtn.MouseButton1Click:Connect(function()
+		OpenFrame:TweenSize(UDim2.new(0, 0, 0, 0), "In", "Quad", 0.2, true, function()
+			OpenFrame.Visible = false
+			MainFrame.Visible = true
+			MainFrame:TweenSize(UDim2.new(0, 550, 0, 400), "Out", "Back", 0.3, true)
+		end)
+	end)
+
+	ExitBtn.MouseButton1Click:Connect(function()
+		Connections.disconnect_all()
+		ScreenGui:Destroy()
+	end)
+
+	-- Sidebar & Pages
+	local Sidebar = Create("Frame", {
+		Parent = MainFrame,
+		BackgroundColor3 = THEME.Section,
+		Position = UDim2.new(0, 0, 0, 50),
+		Size = UDim2.new(0, 160, 1, -50),
+		BorderSizePixel = 0
+	})
+	Create("UICorner", {Parent = Sidebar, CornerRadius = UDim.new(0, 10)})
+	Create("UIListLayout", {Parent = Sidebar, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8)})
+	Create("UIPadding", {Parent = Sidebar, PaddingTop = UDim.new(0, 15), PaddingLeft = UDim.new(0, 15), PaddingRight = UDim.new(0, 15)})
+
+	local PageContainer = Create("Frame", {
+		Parent = MainFrame,
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 170, 0, 60),
+		Size = UDim2.new(1, -180, 1, -70)
+	})
+
+	local WindowObj = {Tabs = {}, Config = _config, ConfigName = ConfigName}
+	local FirstTab = true
+
+	function WindowObj:CreateTab(name)
+		local TabBtn = Create("TextButton", {
+			Parent = Sidebar,
+			BackgroundColor3 = THEME.Section,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 35),
+			Text = name,
+			Font = Enum.Font.GothamMedium,
+			TextColor3 = THEME.DarkText,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			AutoButtonColor = false
+		})
+		Create("UICorner", {Parent = TabBtn, CornerRadius = UDim.new(0, 8)})
+		Create("UIPadding", {Parent = TabBtn, PaddingLeft = UDim.new(0, 10)})
+
+		local Page = Create("ScrollingFrame", {
+			Parent = PageContainer,
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Visible = false,
+			ScrollBarThickness = 3,
+			ScrollBarImageColor3 = THEME.Accent,
+			BorderSizePixel = 0
+		})
+		local PageLayout = Create("UIListLayout", {Parent = Page, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8)})
+		PageLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			Page.CanvasSize = UDim2.new(0, 0, 0, PageLayout.AbsoluteContentSize.Y + 25)
+		end)
+
+		local function Activate()
+			for _, v in pairs(WindowObj.Tabs) do
+				TweenService:Create(v.Btn, TweenInfo.new(0.3), {TextColor3 = THEME.DarkText}):Play()
+				v.Page.Visible = false
+			end
+			TweenService:Create(TabBtn, TweenInfo.new(0.3), {TextColor3 = THEME.Accent}):Play()
+			Page.Visible = true
+		end
+
+		TabBtn.MouseButton1Click:Connect(Activate)
+		if FirstTab then FirstTab = false; Activate() end
+
+		table.insert(WindowObj.Tabs, {Btn = TabBtn, Page = Page})
+
+		local Elements = {}
+
+		function Elements:CreateSection(text)
+			Create("TextLabel", {
+				Parent = Page,
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, 30),
+				Text = text:upper(),
+				Font = Enum.Font.GothamBold,
+				TextColor3 = THEME.DarkText,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+		end
+
+		function Elements:CreateButton(text, callback)
+			callback = callback or function() end
+			local Btn = Create("TextButton", {
+				Parent = Page,
+				BackgroundColor3 = THEME.Section,
+				Size = UDim2.new(1, -5, 0, 38),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.Text,
+				TextSize = 14,
+				AutoButtonColor = false
+			})
+			Create("UICorner", {Parent = Btn, CornerRadius = UDim.new(0, 8)})
+			Create("UIStroke", {Parent = Btn, Color = THEME.Stroke, Thickness = 1})
+
+			Btn.MouseButton1Click:Connect(function()
+				TweenService:Create(Btn, TweenInfo.new(0.15), {BackgroundColor3 = THEME.Accent}):Play()
+				task.wait(0.15)
+				TweenService:Create(Btn, TweenInfo.new(0.25), {BackgroundColor3 = THEME.Section}):Play()
+				callback()
+			end)
+		end
+
+		function Elements:CreateToggle(options)
+			local text = options.text or "Toggle"
+			local callback = options.callback or function() end
+			local flag = options.flag
+			local default = options.default or false
+			local keybind = options.keybind
+			
+			local Toggled = default
+			
+			if flag and WindowObj.Config._flags[flag] ~= nil then
+				Toggled = WindowObj.Config._flags[flag]
+			end
+			
+			local Btn = Create("TextButton", {
+				Parent = Page,
+				BackgroundColor3 = THEME.Section,
+				Size = UDim2.new(1, -5, 0, 38),
+				Text = "",
+				AutoButtonColor = false
+			})
+			Create("UICorner", {Parent = Btn, CornerRadius = UDim.new(0, 8)})
+			Create("UIStroke", {Parent = Btn, Color = THEME.Stroke, Thickness = 1})
+
+			Create("TextLabel", {
+				Parent = Btn,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 12, 0, 0),
+				Size = UDim2.new(1, -90, 1, 0),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.Text,
+				TextSize = 14,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+
+			local Tracker = Create("Frame", {
+				Parent = Btn,
+				BackgroundColor3 = THEME.TertiaryBg or THEME.Section,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -50, 0.5, 0),
+				Size = UDim2.new(0, 40, 0, 20)
+			})
+			Create("UICorner", {Parent = Tracker, CornerRadius = UDim.new(1, 0)})
+
+			local Dot = Create("Frame", {
+				Parent = Tracker,
+				BackgroundColor3 = THEME.DarkText,
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 3, 0.5, 0),
+				Size = UDim2.new(0, 14, 0, 14)
+			})
+			Create("UICorner", {Parent = Dot, CornerRadius = UDim.new(1, 0)})
+			
+			local KeybindLabel = Create("TextLabel", {
+				Parent = Btn,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(1, 0.5),
+				Position = UDim2.new(1, -5, 0.5, 0),
+				Size = UDim2.new(0, 40, 0, 18),
+				Text = keybind or "...",
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.DarkText,
+				TextSize = 10,
+				TextXAlignment = Enum.TextXAlignment.Center
+			})
+			Create("UICorner", {Parent = KeybindLabel, CornerRadius = UDim.new(0, 4)})
+			Create("UIStroke", {Parent = KeybindLabel, Color = THEME.Accent, Thickness = 1})
+			
+			if flag and WindowObj.Config._keybinds[flag] then
+				KeybindLabel.Text = string.gsub(tostring(WindowObj.Config._keybinds[flag]), "Enum.KeyCode.", "")
+			end
+			
+			local function change_state(state)
+				Toggled = state
+				local TargetPos = Toggled and UDim2.new(0, 23, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+				local TargetColor = Toggled and THEME.Accent or (THEME.TertiaryBg or THEME.Section)
+				local DotColor = Toggled and Color3.new(1,1,1) or THEME.DarkText
+				
+				TweenService:Create(Dot, TweenInfo.new(0.25), {Position = TargetPos, BackgroundColor3 = DotColor}):Play()
+				TweenService:Create(Tracker, TweenInfo.new(0.25), {BackgroundColor3 = TargetColor}):Play()
+				
+				if flag then
+					WindowObj.Config._flags[flag] = Toggled
+					Config.save(WindowObj.ConfigName, WindowObj.Config)
+				end
+				
+				callback(Toggled)
+			end
+			
+			if Toggled then
+				change_state(true)
+			end
+
+			Btn.MouseButton1Click:Connect(function()
+				change_state(not Toggled)
+			end)
+			
+			if flag then
+				KeybindLabel.InputBegan:Connect(function(input, gameProcessed)
+					if gameProcessed or _choosing_keybind then return end
+					if input.UserInputType ~= Enum.UserInputType.MouseButton3 then return end
+					
+					_choosing_keybind = true
+					KeybindLabel.Text = "..."
+					
+					local chooseConnection
+					chooseConnection = UserInputService.InputBegan:Connect(function(keyInput, processed)
+						if processed then return end
+						if keyInput.UserInputType ~= Enum.UserInputType.Keyboard then return end
+						if keyInput.KeyCode == Enum.KeyCode.Unknown then return end
+						
+						chooseConnection:Disconnect()
+						_choosing_keybind = false
+						
+						if keyInput.KeyCode == Enum.KeyCode.Backspace then
+							WindowObj.Config._keybinds[flag] = nil
+							KeybindLabel.Text = "..."
+						else
+							WindowObj.Config._keybinds[flag] = tostring(keyInput.KeyCode)
+							KeybindLabel.Text = string.gsub(tostring(keyInput.KeyCode), "Enum.KeyCode.", "")
+						end
+						
+						Config.save(WindowObj.ConfigName, WindowObj.Config)
+					end)
+				end)
+				
+				Connections[flag.."_keybind"] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+					if gameProcessed then return end
+					if WindowObj.Config._keybinds[flag] and tostring(input.KeyCode) == WindowObj.Config._keybinds[flag] then
+						change_state(not Toggled)
+					end
+				end)
+			end
+		end
+
+		function Elements:CreateSlider(options)
+			local text = options.text or "Slider"
+			local min = options.min or 0
+			local max = options.max or 100
+			local default = options.default or min
+			local callback = options.callback or function() end
+			local flag = options.flag
+			
+			local Value = default
+			
+			if flag and WindowObj.Config._flags[flag] ~= nil then
+				Value = WindowObj.Config._flags[flag]
+			end
+			
+			local Dragging = false
+
+			local Frame = Create("Frame", {
+				Parent = Page,
+				BackgroundColor3 = THEME.Section,
+				Size = UDim2.new(1, -5, 0, 50)
+			})
+			Create("UICorner", {Parent = Frame, CornerRadius = UDim.new(0, 8)})
+			Create("UIStroke", {Parent = Frame, Color = THEME.Stroke, Thickness = 1})
+
+			Create("TextLabel", {
+				Parent = Frame,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 12, 0, 5),
+				Size = UDim2.new(1, -25, 0, 15),
+				Text = text,
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.Text,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left
+			})
+			local ValLbl = Create("TextLabel", {
+				Parent = Frame,
+				BackgroundTransparency = 1,
+				Position = UDim2.new(0, 12, 0, 5),
+				Size = UDim2.new(1, -25, 0, 15),
+				Text = tostring(Value),
+				Font = Enum.Font.Gotham,
+				TextColor3 = THEME.DarkText,
+				TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Right
+			})
+
+			local Bar = Create("TextButton", {
+				Parent = Frame,
+				BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+				Position = UDim2.new(0, 12, 0, 28),
+				Size = UDim2.new(1, -24, 0, 8),
+				AutoButtonColor = false,
+				Text = ""
+			})
+			Create("UICorner", {Parent = Bar, CornerRadius = UDim.new(1, 0)})
+
+			local Fill = Create("Frame", {
+				Parent = Bar,
+				BackgroundColor3 = THEME.Accent,
+				Size = UDim2.new((Value - min) / (max - min), 0, 1, 0)
+			})
+			Create("UICorner", {Parent = Fill, CornerRadius = UDim.new(1, 0)})
+
+			local function Update(input)
+				local SizeX = Bar.AbsoluteSize.X
+				local PosX = Bar.AbsolutePosition.X
+				local Percent = math.clamp((input.Position.X - PosX) / SizeX, 0, 1)
+				Value = math.floor(min + (max - min) * Percent)
+				ValLbl.Text = tostring(Value)
+				TweenService:Create(Fill, TweenInfo.new(0.1), {Size = UDim2.new(Percent, 0, 1, 0)}):Play()
+				
+				if flag then
+					WindowObj.Config._flags[flag] = Value
+					Config.save(WindowObj.ConfigName, WindowObj.Config)
+				end
+				
+				callback(Value)
+			end
+
+			Bar.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					Dragging = true
+					Update(input)
+				end
+			end)
+			UserInputService.InputChanged:Connect(function(input)
+				if Dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					Update(input)
+				end
+			end)
+			UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					Dragging = false
+				end
+			end)
+			
+			if flag then
+				WindowObj.Config._flags[flag] = Value
+				Config.save(WindowObj.ConfigName, WindowObj.Config)
+			end
+		end
+
+		return Elements
+	end
+
+	return WindowObj
+end
+
+Library.SendNotification = SendNotification
+
+-- UI toggle keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.Insert then
+		for _, gui in ipairs(PlayerGui:GetChildren()) do
+			if gui.Name == GUI_NAME then
+				local mainFrame = gui:FindFirstChild("MainFrame")
+				local openFrame = gui:FindFirstChild("OpenFrame")
+				
+				if mainFrame and openFrame then
+					if mainFrame.Visible then
+						mainFrame:TweenSize(UDim2.new(0, 550, 0, 0), "In", "Quad", 0.3, true, function()
+							mainFrame.Visible = false
+							openFrame.Visible = true
+							openFrame:TweenSize(UDim2.new(0, 140, 0, 40), "Out", "Back", 0.3, true)
+						end)
+					else
+						openFrame:TweenSize(UDim2.new(0, 0, 0, 0), "In", "Quad", 0.2, true, function()
+							openFrame.Visible = false
+							mainFrame.Visible = true
+							mainFrame:TweenSize(UDim2.new(0, 550, 0, 400), "Out", "Back", 0.3, true)
+						end)
+					end
+				end
+				break
+end)
+
+repeat task.wait(0.5) until game:IsLoaded()
+
+local Players = cloneref(game:GetService('Players'))
+local ReplicatedStorage = cloneref(game:GetService('ReplicatedStorage'))
+local RunService = cloneref(game:GetService('RunService'))
+local TweenService = cloneref(game:GetService('TweenService'))
+local Stats = cloneref(game:GetService('Stats'))
+local Debris = cloneref(game:GetService('Debris'))
+local CoreGui = cloneref(game:GetService('CoreGui'))
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+if not LocalPlayer.Character then
+    LocalPlayer.CharacterAdded:Wait()
+end
+
+local System = {
+    __properties = {
+        __autoparry_enabled = false,
+        __triggerbot_enabled = false,
+        __manual_spam_enabled = false,
+        __auto_spam_enabled = false,
+        __play_animation = false,
+        __curve_mode = 1,
+        __accuracy = 1,
+        __divisor_multiplier = 1.1,
+        __parried = false,
+        __training_parried = false,
+        __spam_threshold = 1.5,
+        __parries = 0,
+        __parry_key = nil,
+        __grab_animation = nil,
+        __tornado_time = tick(),
+        __first_parry_done = false,
+        __connections = {},
+        __reverted_remotes = {},
+        __spam_accumulator = 0,
+        __spam_rate = 240,
+        __infinity_active = false,
+        __deathslash_active = false,
+        __timehole_active = false,
+        __slashesoffury_active = false,
+        __slashesoffury_count = 0,
+        __is_mobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled,
+        __mobile_guis = {},
+        __randomized_accuracy_enabled = false
+    },
+    
+    __config = {
+        __curve_names = {'Camera', 'Random', 'Accelerated', 'Backwards', 'Slow', 'High'},
+        __detections = {
+            __infinity = false,
+            __deathslash = false,
+            __timehole = false,
+            __slashesoffury = false,
+            __phantom = false
+        }
+    },
+    
+    __triggerbot = {
+        __enabled = false,
+        __is_parrying = false,
+        __parries = 0,
+        __max_parries = 10000,
+        __parry_delay = 0.5
+    }
+}
+
+local function update_divisor()
+    System.__properties.__divisor_multiplier = 0.59 + (System.__properties.__accuracy - 1) * (3 / 99)
+end
+
+-- Create the main window with new modern UI
+local Window = Library:CreateWindow({
+    Title = " River Hub",
+    ConfigName = "RiverConfig"
+})
+
+-- Create tabs matching the original functionality
+local Tabs = {
+    Autoparry = Window:CreateTab("Autoparry"),
+    Detection = Window:CreateTab("Detection"),
+    Spam = Window:CreateTab("Spam"),
+    Player = Window:CreateTab("Player"),
+    Visuals = Window:CreateTab("Visuals"),
+    Misc = Window:CreateTab("Misc"),
+    Settings = Window:CreateTab("Settings")
+}
+
+-- AUTOPARRY TAB
+Tabs.Autoparry:CreateSection("Main Settings")
+
+Tabs.Autoparry:CreateToggle({
+    text = "Enable Autoparry",
+    flag = "autoparry_enabled",
+    default = false,
+    callback = function(state)
+        System.__properties.__autoparry_enabled = state
+    end
+})
+
+Tabs.Autoparry:CreateSlider({
+    text = "Accuracy",
+    min = 1,
+    max = 100,
+    default = 1,
+    flag = "accuracy",
+    callback = function(value)
+        System.__properties.__accuracy = value
+        update_divisor()
+    end
+})
+
+Tabs.Autoparry:CreateSlider({
+    text = "Curve Mode",
+    min = 1,
+    max = 6,
+    default = 1,
+    flag = "curve_mode",
+    callback = function(value)
+        System.__properties.__curve_mode = value
+    end
+})
+
+Tabs.Autoparry:CreateToggle({
+    text = "Play Animation",
+    flag = "play_animation",
+    default = false,
+    callback = function(state)
+        System.__properties.__play_animation = state
+    end
+})
+
+Tabs.Autoparry:CreateToggle({
+    text = "Randomized Accuracy",
+    flag = "randomized_accuracy_enabled",
+    default = false,
+    callback = function(state)
+        System.__properties.__randomized_accuracy_enabled = state
+    end
+})
+
+-- DETECTION TAB
+Tabs.Detection:CreateSection("Ability Detection")
+
+Tabs.Detection:CreateToggle({
+    text = "Infinity Detection",
+    flag = "infinity_detection",
+    default = false,
+    callback = function(state)
+        System.__config.__detections.__infinity = state
+    end
+})
+
+Tabs.Detection:CreateToggle({
+    text = "Deathslash Detection",
+    flag = "deathslash_detection",
+    default = false,
+    callback = function(state)
+        System.__config.__detections.__deathslash = state
+    end
+})
+
+Tabs.Detection:CreateToggle({
+    text = "Timehole Detection",
+    flag = "timehole_detection",
+    default = false,
+    callback = function(state)
+        System.__config.__detections.__timehole = state
+    end
+})
+
+Tabs.Detection:CreateToggle({
+    text = "Slashes of Fury Detection",
+    flag = "slashesoffury_detection",
+    default = false,
+    callback = function(state)
+        System.__config.__detections.__slashesoffury = state
+    end
+})
+
+Tabs.Detection:CreateToggle({
+    text = "Phantom Detection",
+    flag = "phantom_detection",
+    default = false,
+    callback = function(state)
+        System.__config.__detections.__phantom = state
+    end
+})
+
+-- SPAM TAB
+Tabs.Spam:CreateSection("Spam Settings")
+
+Tabs.Spam:CreateToggle({
+    text = "Manual Spam",
+    flag = "manual_spam_enabled",
+    default = false,
+    callback = function(state)
+        System.__properties.__manual_spam_enabled = state
+    end
+})
+
+Tabs.Spam:CreateToggle({
+    text = "Auto Spam",
+    flag = "auto_spam_enabled",
+    default = false,
+    callback = function(state)
+        System.__properties.__auto_spam_enabled = state
+    end
+})
+
+Tabs.Spam:CreateSlider({
+    text = "Spam Rate",
+    min = 100,
+    max = 500,
+    default = 240,
+    flag = "spam_rate",
+    callback = function(value)
+        System.__properties.__spam_rate = value
+    end
+})
+
+Tabs.Spam:CreateSlider({
+    text = "Spam Threshold",
+    min = 0.5,
+    max = 3,
+    default = 1.5,
+    flag = "spam_threshold",
+    callback = function(value)
+        System.__properties.__spam_threshold = value
+    end
+})
+
+-- PLAYER TAB
+Tabs.Player:CreateSection("Player Settings")
+
+Tabs.Player:CreateToggle({
+    text = "Triggerbot",
+    flag = "triggerbot_enabled",
+    default = false,
+    callback = function(state)
+        System.__triggerbot.__enabled = state
+    end
+})
+
+Tabs.Player:CreateSlider({
+    text = "Max Parries",
+    min = 100,
+    max = 10000,
+    default = 10000,
+    flag = "max_parries",
+    callback = function(value)
+        System.__triggerbot.__max_parries = value
+    end
+})
+
+Tabs.Player:CreateSlider({
+    text = "Parry Delay",
+    min = 0.01,
+    max = 1,
+    default = 0.5,
+    flag = "parry_delay",
+    callback = function(value)
+        System.__triggerbot.__parry_delay = value
+    end
+})
+
+-- VISUALS TAB
+Tabs.Visuals:CreateSection("Visual Settings")
+
+Tabs.Visuals:CreateToggle({
+    text = "Show ESP",
+    flag = "show_esp",
+    default = false,
+    callback = function(state)
+        -- ESP functionality would go here
+    end
+})
+
+Tabs.Visuals:CreateToggle({
+    text = "Show Tracers",
+    flag = "show_tracers",
+    default = false,
+    callback = function(state)
+        -- Tracer functionality would go here
+    end
+})
+
+Tabs.Visuals:CreateSlider({
+    text = "ESP Distance",
+    min = 50,
+    max = 500,
+    default = 200,
+    flag = "esp_distance",
+    callback = function(value)
+        -- ESP distance functionality would go here
+    end
+})
+
+-- MISC TAB
+Tabs.Misc:CreateSection("Miscellaneous")
+
+Tabs.Misc:CreateToggle({
+    text = "Test Bypass",
+    flag = "test_bypass_enabled",
+    default = true,
+    callback = function(state)
+        DualBypassSystem.__properties.__test_bypass_enabled = state
+    end
+})
+
+Tabs.Misc:CreateToggle({
+    text = "Use Virtual Input Once",
+    flag = "use_virtual_input_once",
+    default = true,
+    callback = function(state)
+        DualBypassSystem.__properties.__use_virtual_input_once = state
+    end
+})
+
+Tabs.Misc:CreateButton("Reset First Parry", function()
+    System.__properties.__first_parry_done = false
+    DualBypassSystem.__properties.__virtual_input_used = false
+    Library.SendNotification({
+        title = "River Hub",
+        text = "First parry reset completed!",
+        duration = 3
+    })
+end)
+
+Tabs.Misc:CreateButton("Force Parry", function()
+    System.parry.execute()
+end)
+
+-- SETTINGS TAB
+Tabs.Settings:CreateSection("UI Settings")
+
+Tabs.Settings:CreateToggle({
+    text = "Dark Theme",
+    flag = "dark_theme",
+    default = true,
+    callback = function(state)
+        _current_theme = state and "Dark" or "Neon"
+    end
+})
+
+Tabs.Settings:CreateButton("Unload UI", function()
+    Connections.disconnect_all()
+    for _, gui in ipairs(PlayerGui:GetChildren()) do
+        if gui.Name == GUI_NAME then
+            gui:Destroy()
+            break
+        end
+    end
+end)
+
+Tabs.Settings:CreateButton("Save Config", function()
+    Config.save(Window.ConfigName, Window.Config)
+    Library.SendNotification({
+        title = "River Hub",
+        text = "Configuration saved successfully!",
+        duration = 3
+    })
+end)
 
 repeat task.wait(0.5) until game:IsLoaded()
 
@@ -3177,5 +4337,3 @@ Fluent:Notify({
 })
 
 print("River loaded with Fluent UI and Dual Bypass System!")
-
-end) -- Fim do task.spawn para carregamento assíncrono da UI
