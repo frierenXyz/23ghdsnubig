@@ -728,11 +728,14 @@ function System.detection.is_curved()
     -- Analyze velocity changes for curve detection
     local is_curving = false
     local curve_intensity = 0
+    local speed_increase_detected = false
     
     if #props.__velocity_history >= 3 then
         local recent_velocities = {}
+        local recent_speeds = {}
         for i = math.max(1, #props.__velocity_history - 2), #props.__velocity_history do
             table.insert(recent_velocities, props.__velocity_history[i].velocity.Unit)
+            table.insert(recent_speeds, props.__velocity_history[i].velocity.Magnitude)
         end
         
         -- Calculate angular velocity between recent velocity vectors
@@ -744,6 +747,28 @@ function System.detection.is_curved()
         
         local avg_angular_velocity = angle_changes / (#recent_velocities - 1)
         curve_intensity = avg_angular_velocity * speed
+        
+        -- ENHANCED: Detect sudden speed increases (high velocity spikes)
+        if #recent_speeds >= 3 then
+            local old_speed = recent_speeds[1]
+            local current_speed = recent_speeds[#recent_speeds]
+            local speed_increase_ratio = current_speed / old_speed
+            
+            -- Detect significant speed increases (50%+ increase)
+            if speed_increase_ratio > 1.5 and current_speed > 30 then
+                speed_increase_detected = true
+                props.__last_warping = now -- Mark as warping for immediate reaction
+                curve_intensity = curve_intensity + (speed_increase_ratio * 10) -- Boost curve intensity
+            end
+            
+            -- Detect extreme speed spikes (100%+ increase)
+            if speed_increase_ratio > 2.0 and current_speed > 50 then
+                speed_increase_detected = true
+                props.__last_warping = now
+                curve_intensity = curve_intensity + (speed_increase_ratio * 15) -- Major boost
+                is_curving = true -- Force curve detection
+            end
+        end
         
         -- Enhanced curve detection based on angular velocity
         if curve_intensity > (15 + ping * 10) then
@@ -761,6 +786,23 @@ function System.detection.is_curved()
                 is_curving = true
                 props.__last_warping = now
             end
+        end
+        
+        -- ENHANCED: High velocity reaction system
+        if speed > 80 then
+            -- For very high speeds, be more aggressive with curve detection
+            if avg_angular_velocity > 0.1 then -- Lower threshold for high speed
+                is_curving = true
+                props.__curving = now
+                curve_intensity = curve_intensity * 1.5 -- Boost intensity for high speed
+            end
+        end
+        
+        if speed > 120 then
+            -- Extreme speeds - immediate reaction
+            props.__last_warping = now
+            is_curving = true
+            curve_intensity = curve_intensity * 2.0
         end
     end
     
@@ -1648,6 +1690,26 @@ function System.autoparry.start()
             local ping_threshold = math.clamp(ping / 10, 5, 17)
             local speed = velocity.Magnitude
             
+            -- ENHANCED: Detect sudden speed increases
+            local speed_increase_detected = false
+            local props = System.detection.__ball_properties
+            if #props.__velocity_history >= 3 then
+                local recent_speeds = {}
+                for i = math.max(1, #props.__velocity_history - 2), #props.__velocity_history do
+                    table.insert(recent_speeds, props.__velocity_history[i].velocity.Magnitude)
+                end
+                
+                if #recent_speeds >= 3 then
+                    local old_speed = recent_speeds[1]
+                    local current_speed = recent_speeds[#recent_speeds]
+                    local speed_increase_ratio = current_speed / old_speed
+                    
+                    if speed_increase_ratio > 1.5 and current_speed > 30 then
+                        speed_increase_detected = true
+                    end
+                end
+            end
+            
             -- Enhanced parry accuracy calculation with prediction
             local prediction_data = System.detection.predict_parry_timing()
             local parry_accuracy
@@ -1670,6 +1732,18 @@ function System.autoparry.start()
                     parry_accuracy = parry_accuracy * 0.9 -- Decrease range for slow balls
                 end
                 
+                -- ENHANCED: High velocity sudden increase reaction
+                if speed_increase_detected then
+                    parry_accuracy = parry_accuracy * 1.8 -- Major boost for speed spikes
+                end
+                
+                -- ENHANCED: Extreme high velocity handling
+                if speed > 150 then
+                    parry_accuracy = parry_accuracy * 1.5 -- Extra range for extreme speeds
+                elseif speed > 100 then
+                    parry_accuracy = parry_accuracy * 1.3 -- Boost for very high speeds
+                end
+                
                 -- CRITICAL FIX: Enhanced close-range detection
                 local closest_player = System.player.get_closest()
                 if closest_player and closest_player.PrimaryPart then
@@ -1688,10 +1762,20 @@ function System.autoparry.start()
                     if player_distance < 12 and speed > 50 then
                         parry_accuracy = parry_accuracy * 1.3
                     end
+                    
+                    -- ENHANCED: Extreme reaction for sudden speed increases at close range
+                    if player_distance < 15 and speed_increase_detected then
+                        parry_accuracy = parry_accuracy * 2.5 -- Maximum boost for dangerous scenarios
+                    end
                 end
                 
                 -- Minimum accuracy threshold to prevent missing
                 parry_accuracy = math.max(parry_accuracy, 15) -- Ensure minimum parry range
+                
+                -- ENHANCED: Dynamic minimum based on speed
+                if speed > 100 then
+                    parry_accuracy = math.max(parry_accuracy, 25) -- Higher minimum for high speeds
+                end
                 
             else
                 -- Fallback to original calculation with close-range fixes
