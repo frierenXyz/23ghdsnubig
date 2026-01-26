@@ -1669,11 +1669,49 @@ function System.autoparry.start()
                 elseif speed < 30 then
                     parry_accuracy = parry_accuracy * 0.9 -- Decrease range for slow balls
                 end
+                
+                -- CRITICAL FIX: Enhanced close-range detection
+                local closest_player = System.player.get_closest()
+                if closest_player and closest_player.PrimaryPart then
+                    local player_distance = (LocalPlayer.Character.PrimaryPart.Position - closest_player.PrimaryPart.Position).Magnitude
+                    
+                    -- Dramatically increase parry range when very close to players
+                    if player_distance < 10 then
+                        parry_accuracy = parry_accuracy * 2.0 -- Double the range for close combat
+                    elseif player_distance < 15 then
+                        parry_accuracy = parry_accuracy * 1.5 -- 1.5x range for near combat
+                    elseif player_distance < 20 then
+                        parry_accuracy = parry_accuracy * 1.2 -- 1.2x range for medium range
+                    end
+                    
+                    -- Additional boost for high-speed close combat
+                    if player_distance < 12 and speed > 50 then
+                        parry_accuracy = parry_accuracy * 1.3
+                    end
+                end
+                
+                -- Minimum accuracy threshold to prevent missing
+                parry_accuracy = math.max(parry_accuracy, 15) -- Ensure minimum parry range
+                
             else
-                -- Fallback to original calculation
+                -- Fallback to original calculation with close-range fixes
                 local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                 local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
                 parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                
+                -- Apply close-range fixes to fallback calculation
+                local closest_player = System.player.get_closest()
+                if closest_player and closest_player.PrimaryPart then
+                    local player_distance = (LocalPlayer.Character.PrimaryPart.Position - closest_player.PrimaryPart.Position).Magnitude
+                    
+                    if player_distance < 10 then
+                        parry_accuracy = parry_accuracy * 2.0
+                    elseif player_distance < 15 then
+                        parry_accuracy = parry_accuracy * 1.5
+                    end
+                end
+                
+                parry_accuracy = math.max(parry_accuracy, 15)
             end
             
             local curved = System.detection.is_curved()
@@ -1761,9 +1799,32 @@ function System.autoparry.start()
                     local ping = Stats.Network.ServerStatsItem['Data Ping']:GetValue() / 10
                     local ping_threshold = math.clamp(ping / 10, 5, 17)
                     
+                    -- Apply same enhanced accuracy calculation as main game
                     local capped_speed_diff = math.min(math.max(speed - 9.5, 0), 650)
                     local speed_divisor = (2.4 + capped_speed_diff * 0.002) * System.__properties.__divisor_multiplier
-                    local parry_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    local base_accuracy = ping_threshold + math.max(speed / speed_divisor, 9.5)
+                    
+                    -- Apply close-range fixes for training ball too
+                    local closest_player = System.player.get_closest()
+                    if closest_player and closest_player.PrimaryPart then
+                        local player_distance = (LocalPlayer.Character.PrimaryPart.Position - closest_player.PrimaryPart.Position).Magnitude
+                        
+                        if player_distance < 10 then
+                            base_accuracy = base_accuracy * 2.0
+                        elseif player_distance < 15 then
+                            base_accuracy = base_accuracy * 1.5
+                        elseif player_distance < 20 then
+                            base_accuracy = base_accuracy * 1.2
+                        end
+                        
+                        -- Additional boost for high-speed close combat
+                        if player_distance < 12 and speed > 50 then
+                            base_accuracy = base_accuracy * 1.3
+                        end
+                    end
+                    
+                    -- Ensure minimum accuracy threshold
+                    local parry_accuracy = math.max(base_accuracy, 15)
                     
                     if ball_target == LocalPlayer.Name and distance <= parry_accuracy then
                         if getgenv().AutoParryMode == "Keypress" then
